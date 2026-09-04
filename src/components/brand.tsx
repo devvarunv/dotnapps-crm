@@ -17,7 +17,7 @@ export function LogoMark({ className }: { className?: string }) {
     >
       <path d="M24 24H40V40H24V24Z" />
       <path d="M24 50L40 44V70H24V50Z" />
-      <path d="M46 24H74V62L68 70H60V36H46V24Z" />
+      <path d="M46 27L58 27L71 40L71 64L65 69L56 69L56 40L46 40Z" />
     </svg>
   );
 }

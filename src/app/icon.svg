@@ -2,5 +2,5 @@
   <rect width="100" height="100" fill="#F8FAFC" rx="18" />
   <path d="M24 24H40V40H24V24Z" fill="#27272A" />
   <path d="M24 50L40 44V70H24V50Z" fill="#27272A" />
-  <path d="M46 24H74V62L68 70H60V36H46V24Z" fill="#27272A" />
+  <path d="M46 27L58 27L71 40L71 64L65 69L56 69L56 40L46 40Z" fill="#27272A" />
 </svg>
