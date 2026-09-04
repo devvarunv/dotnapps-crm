@@ -4,16 +4,27 @@ import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 /**
  * Scheduler entrypoint for subscription lifecycle transitions (trial → grace →
- * suspended). Point a daily cron at:
- *   POST /api/billing/lifecycle   Authorization: Bearer $AUTOMATION_SECRET
+ * suspended). Two ways to trigger it:
+ *   - POST /api/billing/lifecycle   Authorization: Bearer $AUTOMATION_SECRET
+ *     (any external cron/scheduler)
+ *   - GET  /api/billing/lifecycle   (Vercel Cron — see vercel.json). Vercel
+ *     automatically sends `Authorization: Bearer $CRON_SECRET` on requests it
+ *     triggers, so this only fires for genuine Vercel Cron invocations.
  */
 export async function POST(req: NextRequest) {
+  return handle(req, process.env.AUTOMATION_SECRET, "AUTOMATION_SECRET");
+}
+
+export async function GET(req: NextRequest) {
+  return handle(req, process.env.CRON_SECRET, "CRON_SECRET");
+}
+
+async function handle(req: NextRequest, secret: string | undefined, secretName: string) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rl = rateLimit(`cron:billing:${ip}`, RATE_LIMITS.cron.limit, RATE_LIMITS.cron.windowMs);
   if (!rl.allowed) return json({ error: "Rate limit exceeded" }, 429);
 
-  const secret = process.env.AUTOMATION_SECRET;
-  if (!secret) return json({ error: "AUTOMATION_SECRET is not set" }, 500);
+  if (!secret) return json({ error: `${secretName} is not set` }, 500);
 
   const provided =
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??

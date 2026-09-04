@@ -13,6 +13,7 @@ Deploy, backup, monitoring and incident notes for Dotnapps CRM. Pairs with
 | `AUTH_URL` / `AUTH_TRUST_HOST` | yes | Base URL Auth.js runs behind. |
 | `NEXT_PUBLIC_APP_URL` | yes | Used for absolute links (invites, webhook URL shown in Settings). |
 | `AUTOMATION_SECRET` | yes for schedulers | Bearer secret for `POST /api/automation/run` and `POST /api/billing/lifecycle`. |
+| `CRON_SECRET` | only on Vercel | Enables the `GET /api/billing/lifecycle` path Vercel Cron calls (see below) — Vercel auto-attaches `Authorization: Bearer $CRON_SECRET` to requests it triggers. Not used by any other host. |
 
 Never commit `.env` / `.env.test`. Store production secrets in the hosting
 platform's secret manager, not in source.
@@ -41,6 +42,17 @@ scheduled functions, etc.) — both are secret-protected and rate-limited:
 curl -X POST https://your-domain/api/automation/run \
   -H "Authorization: Bearer $AUTOMATION_SECRET"
 ```
+
+**On Vercel (Hobby plan):** the Hobby tier only allows daily cron schedules,
+so only the billing lifecycle job is wired up as a Vercel Cron job
+(`vercel.json`, `0 3 * * *` UTC) hitting `GET /api/billing/lifecycle` —
+Vercel auto-authenticates that request with `Authorization: Bearer
+$CRON_SECRET` (set that env var in the project; the route checks it). The
+automation-run job needs a 5–15 min cadence Hobby can't schedule, so on Hobby
+either trigger it manually ("Run now" in Settings → Automation) or ping
+`POST /api/automation/run` from a free external scheduler (e.g.
+cron-job.org) using `AUTOMATION_SECRET`. Upgrading to Vercel Pro removes the
+once-daily cron limit if you want both jobs on Vercel's own scheduler.
 
 ### Rollback
 
