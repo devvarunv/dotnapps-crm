@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { toCsv, csvResponse } from "@/lib/crm/csv";
+import { exportGate } from "@/lib/billing/entitlements";
 import { parseCompanyParams, buildCompanyWhere } from "../query";
 
 const MAX_ROWS = 5000;
@@ -17,6 +18,9 @@ export async function GET(req: NextRequest) {
   if (!can(ctx.role, "companies:view") || !can(ctx.role, "export:data")) {
     return new Response("Forbidden", { status: 403 });
   }
+
+  const gate = await exportGate(ctx.activeOrg.id);
+  if (gate.blocked) return gate.blocked;
 
   const raw = Object.fromEntries(req.nextUrl.searchParams.entries());
   const p = parseCompanyParams(raw);
@@ -52,5 +56,6 @@ export async function GET(req: NextRequest) {
     metadata: { count: companies.length },
   });
 
+  await gate.commit();
   return csvResponse(`companies-${new Date().toISOString().slice(0, 10)}.csv`, csv);
 }

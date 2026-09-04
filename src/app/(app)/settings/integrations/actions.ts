@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { encryptSecret } from "@/lib/crypto";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
-import { guard } from "@/lib/crm/guard";
+import { guard, planLimitError } from "@/lib/crm/guard";
 import { getDecryptedConfig, testConnection } from "@/lib/integrations/invoice";
 
 const PROVIDER = "DOTNAPPS_INVOICE" as const;
@@ -48,6 +48,12 @@ export async function saveInvoiceIntegrationAction(
   const existing = await prisma.integration.findUnique({
     where: { orgId_provider: { orgId: ctx.org.id, provider: PROVIDER } },
   });
+
+  // New connection? Check the plan's integrations allowance (0 = not on plan).
+  if (!existing || existing.status === "NOT_CONFIGURED") {
+    const limit = await planLimitError(ctx.org.id, "integrations");
+    if (limit) return limit;
+  }
 
   const apiKeyCiphertext = d.apiKey
     ? encryptSecret(d.apiKey)

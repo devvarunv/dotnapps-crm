@@ -2,7 +2,7 @@
 
 Turn leads into customers. Customers into revenue.
 
-A modern, multi-tenant CRM. This repository currently contains **Phases 1–6**
+A modern, multi-tenant CRM. This repository currently contains **Phases 1–7**
 from the product specification: Foundation (auth, tenancy, RBAC, audit),
 CRM Core (Leads / Contacts / Companies, tags, search, bulk actions, conversion),
 Sales Pipeline (Deals, configurable pipelines, a drag-and-drop Kanban board,
@@ -10,7 +10,9 @@ Tasks, a unified Activity timeline), the **Dotnapps Invoice revenue
 integration** (quotations, invoices, payments via a configurable provider with
 signed webhooks, plus a labelled sandbox mode), **rule-based follow-up
 automation** with in-app notifications (explicit condition/action rules, no AI),
-and **reports & analytics** computed at read time from source records.
+**reports & analytics** computed at read time from source records, and
+**SaaS subscriptions** — configurable plans with server-side usage limits and a
+trial / grace / suspension lifecycle.
 
 > **No AI in V1.** The architecture is kept modular so AI features can be added
 > in V2, but none are present.
@@ -215,6 +217,43 @@ Invoice-link tables).
 
 The dashboard keeps its snapshot KPIs and links out to the full reports.
 
+## What's implemented (Phase 7 — SaaS subscriptions, plans & usage limits)
+
+Plans are platform-level and configurable — **no plan names are hardcoded in
+app logic**; a plan's `limits` JSON drives every entitlement check.
+
+- **Model**: `SubscriptionPlan` (price, interval, trial days, `limits`,
+  `features`), `Subscription` (one per org: `TRIALING → GRACE → SUSPENDED`,
+  plus `ACTIVE` / `PAST_DUE` / `CANCELED`), `UsageRecord` (per-period metered
+  usage, e.g. exports).
+- **Entitlements** (`src/lib/billing/entitlements.ts`): `getSubscription`
+  (creates a trialing one lazily), `checkLimit` / `assertWithinLimit`
+  (live counts for members / leads / contacts / companies / deals / rules /
+  integrations; per-month count for exports), `assertWritable` (blocks all
+  writes on a suspended workspace — data is retained).
+- **Enforcement (server-side)**: the shared `guard()` rejects mutations on a
+  suspended org; create actions for leads / contacts / companies / deals /
+  automation rules and member invites check the plan limit; every CSV export
+  route consumes and enforces the monthly export allowance (`429` when spent).
+- **Lifecycle**: `runBillingLifecycle()` advances trial → grace → suspended by
+  date, notifies admins, and is exposed at
+  `POST /api/billing/lifecycle` (`Authorization: Bearer $AUTOMATION_SECRET`).
+- **`/settings/subscription`** (`billing:manage`): current plan + status,
+  usage bars, self-serve upgrade / downgrade / cancel / resume, and a sandbox
+  "simulate payment success / failure" (no real payment provider is wired).
+- **`/pricing`** renders from the public plan rows.
+- **Super Admin** gains **Plans** (create / edit, limits editor) and
+  **Subscriptions** (per-org plan + status control, MRR, run-lifecycle), and
+  MRR / suspended tiles on the overview.
+- A billing banner (trial ending / past due / suspended / cancelling) shows in
+  the app shell for every role.
+
+### Billing notes
+
+- There is no payment integration; plan changes and the sandbox actions are
+  the only ways a subscription becomes `ACTIVE`. Swapping in a real provider
+  means wiring its checkout + webhooks to the same lifecycle transitions.
+
 ## Local setup
 
 ### 1. PostgreSQL
@@ -301,20 +340,23 @@ src/lib/crm/                sales.ts (pipeline/activity helpers) + labels/query/
 src/lib/integrations/       invoice client (live + mock), webhook HMAC, event sync
 src/lib/automation/         engine (rule evaluators + idempotent runner), notify, rules
 src/lib/reports/            report range parsing + read-time metric functions
+src/lib/billing/            entitlements (limits + suspension) + lifecycle job
 src/app/(app)/reports/      analytics page + salesperson CSV export
+src/app/(app)/settings/subscription/   plan, usage, upgrade/cancel, sandbox
 src/app/api/integrations/invoice/webhook   signed provider webhook endpoint
 src/app/api/automation/run                 secret-protected scheduler endpoint
-src/app/admin/              Super Admin (separate layout + guard)
+src/app/api/billing/lifecycle              secret-protected billing lifecycle job
+src/app/admin/              Super Admin — overview, plans, subscriptions
 ```
 
 ## Notes / next steps
 
 - `package.json#prisma` (the `seed` hook) is deprecated in favour of
   `prisma.config.ts` in Prisma 7 — migrate before upgrading.
-- **Phase 7 (SaaS subscriptions & usage limits)**: `SubscriptionPlan`,
-  `Subscription`, `UsageRecord`; server-side entitlement enforcement, trial /
-  grace / suspension states, failed-payment retry. The Pricing page and
-  Subscription settings currently show honest placeholder states.
+- **Phase 8 (hardening)**: rate limiting on sensitive endpoints, an automated
+  test suite (unit + integration + E2E + cross-tenant/authorization security
+  tests), accessibility + responsive passes, monitoring/error logging, and a
+  deploy/backup runbook.
 - `reports:view` currently shows the salesperson-performance table to every
   role; a manager-only gate for that section is a later refinement.
 - Still open across phases: CSV **import** wizard, custom fields, per-user

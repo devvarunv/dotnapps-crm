@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { toCsv, csvResponse } from "@/lib/crm/csv";
+import { exportGate } from "@/lib/billing/entitlements";
 import { LEAD_SOURCE_LABELS, LEAD_STATUS_LABELS } from "@/lib/crm/labels";
 import { parseLeadParams, buildLeadWhere, leadOrderBy } from "../query";
 
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
   if (!can(ctx.role, "leads:view") || !can(ctx.role, "export:data")) {
     return new Response("Forbidden", { status: 403 });
   }
+
+  const gate = await exportGate(ctx.activeOrg.id);
+  if (gate.blocked) return gate.blocked;
 
   const raw = Object.fromEntries(req.nextUrl.searchParams.entries());
   const p = parseLeadParams(raw);
@@ -51,6 +55,7 @@ export async function GET(req: NextRequest) {
     { header: "Created", value: (l) => l.createdAt.toISOString() },
   ]);
 
+  await gate.commit();
   await recordAudit({
     action: "lead.export",
     orgId: ctx.activeOrg.id,

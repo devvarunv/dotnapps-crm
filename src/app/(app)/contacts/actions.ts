@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { isRedirectError } from "@/lib/next";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
-import { guard } from "@/lib/crm/guard";
+import { guard, planLimitError } from "@/lib/crm/guard";
 import { contactSchema } from "@/lib/crm/validation";
 import {
   resolveOwnerId,
@@ -25,6 +25,9 @@ export async function createContactAction(
   const g = await guard("contacts:create");
   if ("error" in g) return g.error;
   const { ctx } = g;
+
+  const limit = await planLimitError(ctx.org.id, "contacts");
+  if (limit) return limit;
 
   const parsed = contactSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };

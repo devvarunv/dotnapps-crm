@@ -1,6 +1,7 @@
 import { requireOrgContext } from "@/lib/context";
 import { prisma } from "@/lib/db";
 import { Sidebar, type SidebarOrg } from "@/components/app/sidebar";
+import { BillingBanner } from "@/components/app/billing-banner";
 
 export default async function AppLayout({
   children,
@@ -30,6 +31,7 @@ export default async function AppLayout({
         unreadNotifications={unreadNotifications}
       />
       <div className="flex min-w-0 flex-1 flex-col">
+        <BillingBanner orgId={ctx.org.id} />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           {children}
         </main>

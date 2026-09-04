@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { isRedirectError } from "@/lib/next";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
-import { guard } from "@/lib/crm/guard";
+import { guard, planLimitError } from "@/lib/crm/guard";
 import {
   dealSchema,
   changeStageSchema,
@@ -37,6 +37,9 @@ export async function createDealAction(
   const g = await guard("deals:create");
   if ("error" in g) return g.error;
   const { ctx } = g;
+
+  const limit = await planLimitError(ctx.org.id, "deals");
+  if (limit) return limit;
 
   const parsed = dealSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };

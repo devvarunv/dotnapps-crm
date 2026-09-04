@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/utils";
+import { monthlyCents } from "@/lib/billing/entitlements";
 import { AUDIT_LABELS } from "@/lib/audit-labels";
 import { Card, Badge } from "@/components/ui/primitives";
 
@@ -38,9 +39,17 @@ export default async function AdminDashboardPage() {
   });
   const failedEvents = await prisma.integrationEvent.count({ where: { status: "FAILED" } });
 
+  const subscriptions = await prisma.subscription.findMany({ include: { plan: true } });
+  const mrr = subscriptions
+    .filter((s) => ["ACTIVE", "PAST_DUE", "GRACE"].includes(s.status))
+    .reduce((a, s) => a + monthlyCents(s.plan), 0);
+  const suspended = subscriptions.filter((s) => s.status === "SUSPENDED").length;
+
   const stats = [
     { label: "Users", value: userCount },
     { label: "Businesses", value: orgCount },
+    { label: "MRR", value: `$${Math.round(mrr / 100)}` },
+    { label: "Suspended", value: suspended },
     { label: "Active memberships", value: memberCount },
     { label: "Pending invites", value: pendingInvites },
   ];
@@ -50,8 +59,7 @@ export default async function AdminDashboardPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Platform overview</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Read-only platform metrics. Subscription, MRR and provider-health
-          tooling arrive with the SaaS phase.
+          Platform metrics. Manage plans and subscriptions from the tabs above.
         </p>
       </div>
 

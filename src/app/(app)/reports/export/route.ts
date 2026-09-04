@@ -4,6 +4,7 @@ import { getAuthContext } from "@/lib/context";
 import { can } from "@/lib/rbac";
 import { recordAudit } from "@/lib/audit";
 import { toCsv, csvResponse } from "@/lib/crm/csv";
+import { exportGate } from "@/lib/billing/entitlements";
 import { parseReportParams } from "@/lib/reports/query";
 import { salespersonMetrics } from "@/lib/reports/metrics";
 
@@ -15,6 +16,9 @@ export async function GET(req: NextRequest) {
   if (!can(ctx.role, "reports:view") || !can(ctx.role, "export:data")) {
     return new Response("Forbidden", { status: 403 });
   }
+
+  const gate = await exportGate(ctx.activeOrg.id);
+  if (gate.blocked) return gate.blocked;
 
   const raw = Object.fromEntries(req.nextUrl.searchParams.entries());
   const { range, ownerId } = parseReportParams(raw);
@@ -36,6 +40,7 @@ export async function GET(req: NextRequest) {
     metadata: { report: "salesperson", range: range.key },
   });
 
+  await gate.commit();
   return csvResponse(
     `salesperson-report-${range.key}-${new Date().toISOString().slice(0, 10)}.csv`,
     csv,

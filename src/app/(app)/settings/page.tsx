@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { User, Building2, Users, Tags, KanbanSquare, Plug, Zap, Bell, ChevronRight, Lock } from "lucide-react";
+import { User, Building2, Users, Tags, KanbanSquare, Plug, Zap, Bell, CreditCard, ChevronRight, Lock } from "lucide-react";
 
 import { requireOrgContext } from "@/lib/context";
 import { can } from "@/lib/rbac";
@@ -69,18 +69,22 @@ export default async function SettingsPage() {
       desc: "Choose what you're notified about.",
       show: true,
     },
+    {
+      href: "/settings/subscription",
+      icon: CreditCard,
+      title: "Subscription",
+      desc: "Plan, usage limits and billing lifecycle.",
+      show: can(ctx.role, "billing:manage"),
+    },
   ].filter((s) => s.show);
 
   const later = [
     "Lead statuses",
     "Lead sources",
     "Custom fields",
-    "Notifications",
     "Email",
     "WhatsApp",
-    "Integrations",
     "Import / Export",
-    "Subscription",
     "Security",
   ];
 

@@ -5,6 +5,7 @@ import { can } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { toCsv, csvResponse } from "@/lib/crm/csv";
+import { exportGate } from "@/lib/billing/entitlements";
 import { DEAL_STATUS_LABELS, LEAD_SOURCE_LABELS } from "@/lib/crm/labels";
 import { parseDealParams, buildDealWhere } from "../query";
 
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
   if (!can(ctx.role, "deals:view") || !can(ctx.role, "export:data")) {
     return new Response("Forbidden", { status: 403 });
   }
+
+  const gate = await exportGate(ctx.activeOrg.id);
+  if (gate.blocked) return gate.blocked;
 
   const raw = Object.fromEntries(req.nextUrl.searchParams.entries());
   const p = parseDealParams(raw);
@@ -62,5 +66,6 @@ export async function GET(req: NextRequest) {
     metadata: { count: deals.length },
   });
 
+  await gate.commit();
   return csvResponse(`deals-${new Date().toISOString().slice(0, 10)}.csv`, csv);
 }

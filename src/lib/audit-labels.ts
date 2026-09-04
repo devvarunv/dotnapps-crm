@@ -80,4 +80,18 @@ export const AUDIT_LABELS: Record<string, string> = {
   "automation.rule.delete": "Automation rule deleted",
 
   "report.export": "Report exported",
+
+  "billing.change_plan": "Plan changed",
+  "billing.cancel": "Subscription cancelled",
+  "billing.resume": "Subscription resumed",
+  "billing.payment_success": "Payment recorded",
+  "billing.payment_failed": "Payment failed",
+  "billing.trial_ended": "Trial ended",
+  "billing.suspended": "Workspace suspended",
+  "billing.lifecycle_run": "Billing lifecycle run",
+  "billing.plan.create": "Plan created (platform)",
+  "billing.plan.update": "Plan updated (platform)",
+  "billing.admin.set_status": "Subscription status set (platform)",
+  "billing.admin.change_plan": "Subscription plan changed (platform)",
+  "billing.admin.run_lifecycle": "Lifecycle run (platform)",
 };

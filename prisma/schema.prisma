@@ -101,6 +101,10 @@ model Organization {
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
 
+  // Billing (Phase 7)
+  subscription Subscription?
+  usageRecords UsageRecord[]
+
   @@index([slug])
 }
 
@@ -855,7 +859,88 @@ model NotificationPreference {
 }
 
 // ---------------------------------------------------------------------------
+// SaaS subscriptions & usage (Phase 7).
+//   - Plans are platform-level and configurable (no plan names hardcoded in
+//     app logic — `limits` JSON drives entitlement checks).
+//   - Every org has exactly one Subscription. Enforcement is server-side.
+//   - There is no real payment provider wired; lifecycle transitions come
+//     from the date-driven job or explicit admin actions.
+// ---------------------------------------------------------------------------
+
+enum PlanInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  GRACE
+  SUSPENDED
+  CANCELED
+}
+
+model SubscriptionPlan {
+  id          String       @id @default(cuid())
+  key         String       @unique
+  name        String
+  description String?
+  priceCents  Int          @default(0)
+  currency    String       @default("USD")
+  interval    PlanInterval @default(MONTHLY)
+  trialDays   Int          @default(14)
+  isPublic    Boolean      @default(true)
+  isDefault   Boolean      @default(false)
+  active      Boolean      @default(true)
+  sortOrder   Int          @default(0)
+  // { users?, leads?, contacts?, companies?, deals?, automationRules?,
+  //   integrations?, exportsPerMonth? } — absent/null means unlimited.
+  limits      Json         @default("{}")
+  features    String[]     @default([])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  subscriptions Subscription[]
+
+  @@index([isPublic, active])
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  orgId              String             @unique
+  planId             String
+  status             SubscriptionStatus @default(TRIALING)
+  currentPeriodStart DateTime           @default(now())
+  currentPeriodEnd   DateTime
+  trialEndsAt        DateTime?
+  graceEndsAt        DateTime?
+  canceledAt         DateTime?
+  cancelAtPeriodEnd  Boolean            @default(false)
+  failedPaymentCount Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  org  Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@index([status])
+}
+
+model UsageRecord {
+  id          String   @id @default(cuid())
+  orgId       String
+  metric      String
+  quantity    Int      @default(1)
+  periodStart DateTime
+  createdAt   DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, metric, periodStart])
+}
+
+// ---------------------------------------------------------------------------
 // Later phases attach here:
-//   CustomField, CustomFieldValue, ImportJob, ImportRowError,
-//   SubscriptionPlan, Subscription, UsageRecord.
+//   CustomField, CustomFieldValue, ImportJob, ImportRowError.
 // ---------------------------------------------------------------------------

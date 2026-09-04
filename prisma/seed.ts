@@ -451,6 +451,101 @@ async function main() {
     console.log("Seeded 5 automation rules (4 enabled).");
   }
 
+  // --- Subscription plans (Phase 7) ----------------------------------
+  const planCount = await prisma.subscriptionPlan.count();
+  if (planCount === 0) {
+    await prisma.subscriptionPlan.createMany({
+      data: [
+        {
+          key: "starter",
+          name: "Starter",
+          description: "For a founder or first sales hire getting organised.",
+          priceCents: 0,
+          trialDays: 14,
+          isPublic: true,
+          isDefault: true,
+          sortOrder: 0,
+          features: [
+            "Up to 3 team members",
+            "Leads, contacts, companies",
+            "1 pipeline",
+            "5 CSV exports / month",
+            "Email support",
+          ],
+          limits: {
+            users: 3,
+            leads: 200,
+            contacts: 200,
+            companies: 100,
+            deals: 50,
+            automationRules: 3,
+            integrations: 0,
+            exportsPerMonth: 5,
+          },
+        },
+        {
+          key: "growth",
+          name: "Growth",
+          description: "For a growing sales team that needs process and reporting.",
+          priceCents: 2900,
+          trialDays: 14,
+          isPublic: true,
+          sortOrder: 1,
+          features: [
+            "Up to 15 team members",
+            "Multiple pipelines & automation",
+            "Dotnapps Invoice integration",
+            "Reports & analytics",
+            "100 CSV exports / month",
+          ],
+          limits: {
+            users: 15,
+            leads: 5000,
+            contacts: 5000,
+            companies: 2000,
+            deals: 1000,
+            automationRules: 25,
+            integrations: 1,
+            exportsPerMonth: 100,
+          },
+        },
+        {
+          key: "scale",
+          name: "Scale",
+          description: "For organisations with advanced permission and volume needs.",
+          priceCents: 9900,
+          trialDays: 0,
+          isPublic: true,
+          sortOrder: 2,
+          features: [
+            "Unlimited members & records",
+            "Granular roles & permissions",
+            "Priority support",
+            "Audit export",
+            "Onboarding assistance",
+          ],
+          limits: { exportsPerMonth: 1000 },
+        },
+      ],
+    });
+    console.log("Seeded 3 subscription plans (starter/growth/scale).");
+  }
+
+  const growth = await prisma.subscriptionPlan.findUnique({ where: { key: "growth" } });
+  if (growth && !(await prisma.subscription.findUnique({ where: { orgId: org.id } }))) {
+    const now = new Date();
+    await prisma.subscription.create({
+      data: {
+        orgId: org.id,
+        planId: growth.id,
+        status: "ACTIVE",
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+      },
+    });
+    console.log("Acme Inc. subscribed to Growth (ACTIVE).");
+  }
+
   console.log("\nSeed complete. All accounts use password:", DEMO_PASSWORD);
   console.table([
     { email: superAdmin.email, role: "SUPER ADMIN (platform)" },

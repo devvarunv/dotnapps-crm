@@ -7,7 +7,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
-import { guard } from "@/lib/crm/guard";
+import { guard, planLimitError } from "@/lib/crm/guard";
 import { runAutomation, retryExecution } from "@/lib/automation/engine";
 import {
   RULE_TRIGGERS,
@@ -46,6 +46,9 @@ export async function createRuleAction(
   const g = await guard("org:manage");
   if ("error" in g) return g.error;
   const { ctx } = g;
+
+  const limit = await planLimitError(ctx.org.id, "automationRules");
+  if (limit) return limit;
 
   const parsed = ruleSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };

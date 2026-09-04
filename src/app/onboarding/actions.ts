@@ -9,6 +9,7 @@ import { recordAudit } from "@/lib/audit";
 import { createOrgSchema } from "@/lib/validation";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
 import { slugify } from "@/lib/utils";
+import { getSubscription } from "@/lib/billing/entitlements";
 import { setActiveOrg } from "@/app/(app)/actions";
 
 export async function createOrganizationAction(
@@ -49,6 +50,9 @@ export async function createOrganizationAction(
     targetId: org.id,
     metadata: { name, slug },
   });
+
+  // Start the workspace on the default plan (a free trial if the plan has one).
+  await getSubscription(org.id);
 
   await setActiveOrg(org.id);
   redirect("/dashboard");

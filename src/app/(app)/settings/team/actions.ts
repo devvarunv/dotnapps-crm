@@ -8,6 +8,8 @@ import { requirePermission } from "@/lib/context";
 import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { PermissionError, assignableRoles } from "@/lib/rbac";
+import { assertWritable, SuspendedError } from "@/lib/billing/entitlements";
+import { planLimitError } from "@/lib/crm/guard";
 import {
   changeRoleSchema,
   inviteSchema,
@@ -27,10 +29,15 @@ function inviteUrl(token: string): string {
 
 async function guard(permission: Parameters<typeof requirePermission>[0]) {
   try {
-    return { ctx: await requirePermission(permission) };
+    const ctx = await requirePermission(permission);
+    await assertWritable(ctx.org.id);
+    return { ctx };
   } catch (e) {
     if (e instanceof PermissionError) {
       return { error: "You don't have permission to do that." as const };
+    }
+    if (e instanceof SuspendedError) {
+      return { error: e.message as string };
     }
     throw e;
   }
@@ -43,6 +50,9 @@ export async function inviteMemberAction(
   const g = await guard("members:invite");
   if ("error" in g) return { error: g.error };
   const { ctx } = g;
+
+  const limit = await planLimitError(ctx.org.id, "users");
+  if (limit) return limit;
 
   const parsed = inviteSchema.safeParse({
     email: formValue(formData, "email"),
