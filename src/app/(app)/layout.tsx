@@ -1,0 +1,33 @@
+import { requireOrgContext } from "@/lib/context";
+import { Sidebar, type SidebarOrg } from "@/components/app/sidebar";
+
+export default async function AppLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const ctx = await requireOrgContext();
+
+  const orgs: SidebarOrg[] = ctx.memberships.map((m) => ({
+    id: m.orgId,
+    name: m.org.name,
+    role: m.role,
+  }));
+
+  return (
+    <div className="flex min-h-dvh flex-col lg:flex-row">
+      <Sidebar
+        role={ctx.role}
+        activeOrgId={ctx.org.id}
+        orgs={orgs}
+        user={{ name: ctx.user.name, email: ctx.user.email }}
+        isSuperAdmin={ctx.user.isSuperAdmin}
+      />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {children}
+        </main>
+      </div>
+    </div>
+  );
+}

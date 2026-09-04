@@ -1,0 +1,357 @@
+// Dotnapps CRM — Prisma schema
+// Phase 1: Foundation (auth, organizations, users, memberships, roles, audit).
+//
+// Design rules carried from the product spec:
+//   - Every organization-owned record carries `orgId` (tenant scope).
+//   - Authorization is enforced in application code (server-side RBAC); the
+//     schema only provides the data to enforce it.
+//   - Important mutations are recorded in AuditLog.
+//   - Model stays modular so CRM Core (Lead, Contact, Company, Deal, ...)
+//     and later phases attach without reshaping Foundation.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  // Platform-level staff flag for the Super Admin area. Distinct from
+  // per-organization roles below.
+  isSuperAdmin Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+  createdOrgs Organization[] @relation("OrganizationCreatedBy")
+  sentInvites Invite[]       @relation("InviteInvitedBy")
+  auditLogs   AuditLog[]     @relation("AuditLogActor")
+
+  // CRM ownership (Phase 2)
+  ownedLeads     Lead[]    @relation("LeadOwner")
+  ownedContacts  Contact[] @relation("ContactOwner")
+  ownedCompanies Company[] @relation("CompanyOwner")
+  authoredNotes  Note[]    @relation("NoteAuthor")
+
+  @@index([email])
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  createdById String
+  createdBy   User     @relation("OrganizationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships Membership[]
+  invites     Invite[]
+  auditLogs   AuditLog[]
+
+  // CRM Core (Phase 2)
+  leads     Lead[]
+  contacts  Contact[]
+  companies Company[]
+  addresses Address[]
+  tags      Tag[]
+  notes     Note[]
+
+  @@index([slug])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MANAGER
+  SALES
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Membership {
+  id        String           @id @default(cuid())
+  userId    String
+  orgId     String
+  role      Role
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@index([userId])
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model Invite {
+  id          String       @id @default(cuid())
+  orgId       String
+  email       String
+  role        Role
+  token       String       @unique
+  status      InviteStatus @default(PENDING)
+  invitedById String
+  expiresAt   DateTime
+  createdAt   DateTime     @default(now())
+  acceptedAt  DateTime?
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invitedBy User         @relation("InviteInvitedBy", fields: [invitedById], references: [id])
+
+  @@unique([orgId, email])
+  @@index([orgId])
+  @@index([token])
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  // orgId is null for platform-level events (e.g. user registration before
+  // any organization exists).
+  orgId      String?
+  actorId    String?
+  action     String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  org   Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  actor User?         @relation("AuditLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt])
+  @@index([actorId])
+  @@index([action])
+}
+
+// ---------------------------------------------------------------------------
+// CRM Core (Phase 2): Leads, Contacts, Companies, Addresses, Tags, Notes.
+//   - Read access is org-wide for every role in V1; create/edit/delete/assign
+//     /archive/export are gated by RBAC permissions in application code.
+//   - Records are archived, never hard-deleted, once they carry history.
+// ---------------------------------------------------------------------------
+
+enum LeadSource {
+  WEBSITE
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  GOOGLE
+  REFERRAL
+  COLD_CALL
+  EMAIL
+  MANUAL
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+  UNQUALIFIED
+}
+
+enum AddressKind {
+  BILLING
+  SHIPPING
+  OTHER
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  website   String?
+  industry  String?
+  size      String?
+  gstin     String?
+  ownerId   String?
+  notes     String?  @db.Text
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org                Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner              User?        @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  contacts           Contact[]
+  addresses          Address[]
+  noteItems          Note[]
+  tags               Tag[]        @relation("CompanyTags")
+  convertedFromLeads Lead[]       @relation("LeadConvertedCompany")
+
+  @@index([orgId, archived])
+  @@index([orgId, ownerId])
+  @@index([orgId, name])
+}
+
+model Address {
+  id         String      @id @default(cuid())
+  orgId      String
+  companyId  String
+  kind       AddressKind @default(OTHER)
+  line1      String?
+  line2      String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([orgId])
+}
+
+model Contact {
+  id        String      @id @default(cuid())
+  orgId     String
+  name      String
+  title     String?
+  email     String?
+  phone     String?
+  whatsapp  String?
+  companyId String?
+  source    LeadSource?
+  ownerId   String?
+  notes     String?     @db.Text
+  archived  Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  org                Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  company            Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner              User?        @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  noteItems          Note[]
+  tags               Tag[]        @relation("ContactTags")
+  convertedFromLeads Lead[]       @relation("LeadConvertedContact")
+
+  @@index([orgId, archived])
+  @@index([orgId, ownerId])
+  @@index([orgId, email])
+  @@index([companyId])
+}
+
+model Lead {
+  id             String     @id @default(cuid())
+  orgId          String
+  name           String
+  companyName    String?
+  email          String?
+  phone          String?
+  whatsapp       String?
+  website        String?
+  source         LeadSource @default(MANUAL)
+  industry       String?
+  location       String?
+  ownerId        String?
+  status         LeadStatus @default(NEW)
+  estimatedValue Decimal?   @db.Decimal(14, 2)
+  lastActivityAt DateTime?
+  nextFollowUpAt DateTime?
+  archived       Boolean    @default(false)
+
+  convertedAt        DateTime?
+  convertedContactId String?
+  convertedCompanyId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org              Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner            User?        @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  convertedContact Contact?     @relation("LeadConvertedContact", fields: [convertedContactId], references: [id], onDelete: SetNull)
+  convertedCompany Company?     @relation("LeadConvertedCompany", fields: [convertedCompanyId], references: [id], onDelete: SetNull)
+  noteItems        Note[]
+  tags             Tag[]        @relation("LeadTags")
+
+  @@index([orgId, archived])
+  @@index([orgId, status])
+  @@index([orgId, ownerId])
+  @@index([orgId, createdAt])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  color     String   @default("#64748b")
+  createdAt DateTime @default(now())
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  leads     Lead[]       @relation("LeadTags")
+  contacts  Contact[]    @relation("ContactTags")
+  companies Company[]    @relation("CompanyTags")
+
+  @@unique([orgId, name])
+  @@index([orgId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  orgId     String
+  authorId  String?
+  body      String   @db.Text
+  leadId    String?
+  contactId String?
+  companyId String?
+  createdAt DateTime @default(now())
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  author  User?        @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  lead    Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([leadId])
+  @@index([contactId])
+  @@index([companyId])
+}
+
+// ---------------------------------------------------------------------------
+// Later phases attach here:
+//   Deal, Pipeline, PipelineStage, Task, Activity, CustomField,
+//   CustomFieldValue, QuotationLink, InvoiceLink, PaymentEvent, Notification,
+//   ReminderRule, ReminderExecution, ImportJob, ImportRowError,
+//   SubscriptionPlan, Subscription, UsageRecord, Integration.
+// ---------------------------------------------------------------------------
