@@ -2,14 +2,15 @@
 
 Turn leads into customers. Customers into revenue.
 
-A modern, multi-tenant CRM. This repository currently contains **Phases 1–5**
+A modern, multi-tenant CRM. This repository currently contains **Phases 1–6**
 from the product specification: Foundation (auth, tenancy, RBAC, audit),
 CRM Core (Leads / Contacts / Companies, tags, search, bulk actions, conversion),
 Sales Pipeline (Deals, configurable pipelines, a drag-and-drop Kanban board,
 Tasks, a unified Activity timeline), the **Dotnapps Invoice revenue
 integration** (quotations, invoices, payments via a configurable provider with
-signed webhooks, plus a labelled sandbox mode), and **rule-based follow-up
-automation** with in-app notifications — explicit condition/action rules, no AI.
+signed webhooks, plus a labelled sandbox mode), **rule-based follow-up
+automation** with in-app notifications (explicit condition/action rules, no AI),
+and **reports & analytics** computed at read time from source records.
 
 > **No AI in V1.** The architecture is kept modular so AI features can be added
 > in V2, but none are present.
@@ -190,6 +191,30 @@ Explicit `when → do` rules only. No AI, no hidden heuristics.
 - Email delivery for notifications is not wired; `emailEnabled` is stored for
   when it is.
 
+## What's implemented (Phase 6 — reports & analytics)
+
+`/reports` is a single analytics page with a **date-range** (30d / 90d / 12m /
+all) and **owner** filter. Every figure is computed at read time from the
+underlying rows (`src/lib/reports/metrics.ts`) — nothing is cached or
+denormalised, so a report always reconciles against its source records, and no
+financial logic is duplicated (revenue figures come straight from the
+Invoice-link tables).
+
+- **Leads** — volume, converted, conversion rate; breakdown by status and by
+  source (with per-source conversion %).
+- **Pipeline** — open deals, open value, probability-weighted value, and value
+  by stage.
+- **Won & lost** — won/lost counts and value, win rate, average deal size,
+  average sales cycle (created → closed), and closed-on-time vs expected.
+- **Salesperson performance** — per-member table: leads, deals won, won value,
+  open pipeline, tasks completed. CSV export at `/reports/export`
+  (`export:data` gated, range carried in the filename).
+- **Revenue** (only when Dotnapps Invoice is connected) — collected,
+  outstanding, quotation-to-invoice conversion, revenue by source and top
+  customers.
+
+The dashboard keeps its snapshot KPIs and links out to the full reports.
+
 ## Local setup
 
 ### 1. PostgreSQL
@@ -275,6 +300,8 @@ src/app/(app)/              authenticated shell
 src/lib/crm/                sales.ts (pipeline/activity helpers) + labels/query/csv/service/guard
 src/lib/integrations/       invoice client (live + mock), webhook HMAC, event sync
 src/lib/automation/         engine (rule evaluators + idempotent runner), notify, rules
+src/lib/reports/            report range parsing + read-time metric functions
+src/app/(app)/reports/      analytics page + salesperson CSV export
 src/app/api/integrations/invoice/webhook   signed provider webhook endpoint
 src/app/api/automation/run                 secret-protected scheduler endpoint
 src/app/admin/              Super Admin (separate layout + guard)
@@ -284,10 +311,12 @@ src/app/admin/              Super Admin (separate layout + guard)
 
 - `package.json#prisma` (the `seed` hook) is deprecated in favour of
   `prisma.config.ts` in Prisma 7 — migrate before upgrading.
-- **Phase 6 (Reports & Analytics)**: dashboards for lead volume/conversion,
-  lead-source performance, pipeline value by stage, win rate, average deal
-  size, sales cycle, salesperson performance, quotation-to-invoice conversion.
-  Metrics reconcile against source records; no duplicated financial logic.
+- **Phase 7 (SaaS subscriptions & usage limits)**: `SubscriptionPlan`,
+  `Subscription`, `UsageRecord`; server-side entitlement enforcement, trial /
+  grace / suspension states, failed-payment retry. The Pricing page and
+  Subscription settings currently show honest placeholder states.
+- `reports:view` currently shows the salesperson-performance table to every
+  role; a manager-only gate for that section is a later refinement.
 - Still open across phases: CSV **import** wizard, custom fields, per-user
   record visibility scoping, multi-currency roll-ups, email delivery for
   invites/notifications.

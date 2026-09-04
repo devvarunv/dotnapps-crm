@@ -78,4 +78,6 @@ export const AUDIT_LABELS: Record<string, string> = {
   "automation.rule.enable": "Automation rule enabled",
   "automation.rule.disable": "Automation rule disabled",
   "automation.rule.delete": "Automation rule deleted",
+
+  "report.export": "Report exported",
 };

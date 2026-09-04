@@ -160,8 +160,11 @@ export default async function DashboardPage() {
         ))}
       </section>
       <p className="mt-2 text-xs text-muted-foreground">
-        Revenue metrics arrive with the Dotnapps Invoice phase. No placeholder
-        numbers are shown.
+        Snapshot for {ctx.org.name}.{" "}
+        <Link href="/reports" className="font-medium text-primary hover:underline">
+          Open full reports
+        </Link>{" "}
+        for conversion, pipeline, win rate and salesperson performance.
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
