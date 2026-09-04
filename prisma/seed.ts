@@ -10,6 +10,9 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+// Seeding may run without the app env loaded; encryptSecret needs a key.
+process.env.AUTH_SECRET ||= "seed-only-key-not-used-by-the-running-app";
+
 const DEFAULT_TAGS = [
   { name: "VIP", color: "#7c3aed" },
   { name: "Hot Lead", color: "#dc2626" },
@@ -317,6 +320,84 @@ async function main() {
 
       console.log("Seeded 1 pipeline (6 stages), 8 deals, ~6 tasks, deal activities.");
     }
+  }
+
+  // --- Revenue integration sample data (Phase 4) -----------------------
+  const integrationCount = await prisma.integration.count({ where: { orgId: org.id } });
+  if (integrationCount === 0) {
+    const { encryptSecret } = await import("../src/lib/crypto");
+    await prisma.integration.create({
+      data: {
+        orgId: org.id,
+        provider: "DOTNAPPS_INVOICE",
+        status: "CONNECTED",
+        mode: "MOCK",
+        webhookSecretCiphertext: encryptSecret(randomBytes(24).toString("hex")),
+        advanceStageOnAccept: true,
+        lastCheckedAt: new Date(),
+      },
+    });
+
+    const dealsForRevenue = await prisma.deal.findMany({
+      where: { orgId: org.id },
+      orderBy: { createdAt: "asc" },
+      take: 4,
+      select: { id: true, name: true, companyId: true, currency: true, value: true },
+    });
+    let n = 1000;
+    for (const [idx, d] of dealsForRevenue.entries()) {
+      const amount = d.value ? Number(d.value) : 12000;
+      const quote = await prisma.quotationLink.create({
+        data: {
+          orgId: org.id,
+          externalId: `mock_q_seed_${n}`,
+          number: `Q-${n}`,
+          status: idx < 2 ? "ACCEPTED" : "SENT",
+          amount: new Prisma.Decimal(amount),
+          currency: d.currency,
+          issueDate: new Date(Date.now() - (idx + 2) * 86_400_000),
+          expiryDate: new Date(Date.now() + 20 * 86_400_000),
+          dealId: d.id,
+          companyId: d.companyId,
+        },
+      });
+      n++;
+      if (idx < 2) {
+        const paid = idx === 0 ? amount : Math.round(amount / 2);
+        const invoice = await prisma.invoiceLink.create({
+          data: {
+            orgId: org.id,
+            externalId: `mock_inv_seed_${n}`,
+            number: `INV-${n}`,
+            status: idx === 0 ? "PAID" : "PARTIAL",
+            amount: new Prisma.Decimal(amount),
+            amountPaid: new Prisma.Decimal(paid),
+            balance: new Prisma.Decimal(amount - paid),
+            currency: d.currency,
+            issueDate: new Date(Date.now() - idx * 86_400_000),
+            dueDate: new Date(Date.now() + 15 * 86_400_000),
+            dealId: d.id,
+            companyId: d.companyId,
+            quotationLinkId: quote.id,
+          },
+        });
+        n++;
+        await prisma.paymentEvent.create({
+          data: {
+            orgId: org.id,
+            externalId: `mock_pay_seed_${n}`,
+            invoiceLinkId: invoice.id,
+            amount: new Prisma.Decimal(paid),
+            currency: d.currency,
+            method: "BANK_TRANSFER",
+            reference: `TXN-${n}`,
+            paidAt: new Date(Date.now() - idx * 43_200_000),
+          },
+        });
+        n++;
+      }
+    }
+    console.log("Seeded Dotnapps Invoice integration (MOCK), 4 quotations, 2 invoices, 2 payments.");
   }
 
   console.log("\nSeed complete. All accounts use password:", DEMO_PASSWORD);

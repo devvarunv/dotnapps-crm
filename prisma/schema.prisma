@@ -83,6 +83,13 @@ model Organization {
   tasks          Task[]
   activities     Activity[]
 
+  // Revenue integration (Phase 4)
+  integrations      Integration[]
+  quotationLinks    QuotationLink[]
+  invoiceLinks      InvoiceLink[]
+  paymentEvents     PaymentEvent[]
+  integrationEvents IntegrationEvent[]
+
   @@index([slug])
 }
 
@@ -219,15 +226,17 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  org                Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  owner              User?        @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  org                Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner              User?           @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   contacts           Contact[]
   addresses          Address[]
   deals              Deal[]
   tasks              Task[]
   activities         Activity[]
-  tags               Tag[]        @relation("CompanyTags")
-  convertedFromLeads Lead[]       @relation("LeadConvertedCompany")
+  quotationLinks     QuotationLink[]
+  invoiceLinks       InvoiceLink[]
+  tags               Tag[]           @relation("CompanyTags")
+  convertedFromLeads Lead[]          @relation("LeadConvertedCompany")
 
   @@index([orgId, archived])
   @@index([orgId, ownerId])
@@ -271,14 +280,15 @@ model Contact {
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
-  org                Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  company            Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  owner              User?        @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  org                Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  company            Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  owner              User?           @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   deals              Deal[]
   tasks              Task[]
   activities         Activity[]
-  tags               Tag[]        @relation("ContactTags")
-  convertedFromLeads Lead[]       @relation("LeadConvertedContact")
+  quotationLinks     QuotationLink[]
+  tags               Tag[]           @relation("ContactTags")
+  convertedFromLeads Lead[]          @relation("LeadConvertedContact")
 
   @@index([orgId, archived])
   @@index([orgId, ownerId])
@@ -454,16 +464,18 @@ model Deal {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  stage      PipelineStage @relation(fields: [stageId], references: [id])
-  company    Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  contact    Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
-  owner      User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  tasks      Task[]
-  activities Activity[]
-  tags       Tag[]         @relation("DealTags")
-  fromLeads  Lead[]        @relation("LeadConvertedDeal")
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pipeline       Pipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage          PipelineStage   @relation(fields: [stageId], references: [id])
+  company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact        Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner          User?           @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  tasks          Task[]
+  activities     Activity[]
+  quotationLinks QuotationLink[]
+  invoiceLinks   InvoiceLink[]
+  tags           Tag[]           @relation("DealTags")
+  fromLeads      Lead[]          @relation("LeadConvertedDeal")
 
   @@index([orgId, archived])
   @@index([orgId, status])
@@ -537,8 +549,190 @@ model Activity {
 }
 
 // ---------------------------------------------------------------------------
+// Revenue integration (Phase 4): Dotnapps Invoice link records.
+//   - CRM never computes financial figures. QuotationLink / InvoiceLink /
+//     PaymentEvent mirror values the provider is authoritative for, keyed by
+//     the provider's `externalId`. `raw` keeps the last provider payload.
+//   - Writes come from user-initiated provider calls or verified webhooks;
+//     both are idempotent on `externalId`.
+// ---------------------------------------------------------------------------
+
+enum IntegrationProvider {
+  DOTNAPPS_INVOICE
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  CONNECTED
+  ERROR
+  DISABLED
+}
+
+enum IntegrationMode {
+  LIVE
+  MOCK
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CONVERTED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum PaymentMethod {
+  CARD
+  BANK_TRANSFER
+  CASH
+  CHEQUE
+  UPI
+  OTHER
+}
+
+enum IntegrationEventStatus {
+  PROCESSED
+  IGNORED
+  FAILED
+}
+
+model Integration {
+  id                      String              @id @default(cuid())
+  orgId                   String
+  provider                IntegrationProvider @default(DOTNAPPS_INVOICE)
+  status                  IntegrationStatus   @default(NOT_CONFIGURED)
+  mode                    IntegrationMode     @default(MOCK)
+  baseUrl                 String?
+  // AES-256-GCM ciphertext; never stored or logged in plaintext.
+  apiKeyCiphertext        String?
+  webhookSecretCiphertext String?
+  advanceStageOnAccept    Boolean             @default(true)
+  lastCheckedAt           DateTime?
+  lastError               String?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, provider])
+}
+
+model QuotationLink {
+  id         String              @id @default(cuid())
+  orgId      String
+  provider   IntegrationProvider @default(DOTNAPPS_INVOICE)
+  externalId String
+  number     String?
+  status     QuotationStatus     @default(DRAFT)
+  amount     Decimal?            @db.Decimal(14, 2)
+  currency   String              @default("USD")
+  issueDate  DateTime?
+  expiryDate DateTime?
+  url        String?
+  dealId     String?
+  companyId  String?
+  contactId  String?
+  raw        Json?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  org      Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deal     Deal?         @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  company  Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact  Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  invoices InvoiceLink[]
+
+  @@unique([orgId, provider, externalId])
+  @@index([orgId, status])
+  @@index([dealId])
+  @@index([companyId])
+}
+
+model InvoiceLink {
+  id              String              @id @default(cuid())
+  orgId           String
+  provider        IntegrationProvider @default(DOTNAPPS_INVOICE)
+  externalId      String
+  number          String?
+  status          InvoiceStatus       @default(DRAFT)
+  amount          Decimal?            @db.Decimal(14, 2)
+  amountPaid      Decimal             @default(0) @db.Decimal(14, 2)
+  balance         Decimal?            @db.Decimal(14, 2)
+  currency        String              @default("USD")
+  issueDate       DateTime?
+  dueDate         DateTime?
+  url             String?
+  dealId          String?
+  companyId       String?
+  quotationLinkId String?
+  raw             Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  org           Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  deal          Deal?          @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  company       Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  quotationLink QuotationLink? @relation(fields: [quotationLinkId], references: [id], onDelete: SetNull)
+  payments      PaymentEvent[]
+
+  @@unique([orgId, provider, externalId])
+  @@index([orgId, status])
+  @@index([dealId])
+  @@index([companyId])
+}
+
+model PaymentEvent {
+  id            String              @id @default(cuid())
+  orgId         String
+  provider      IntegrationProvider @default(DOTNAPPS_INVOICE)
+  externalId    String
+  invoiceLinkId String
+  amount        Decimal             @db.Decimal(14, 2)
+  currency      String              @default("USD")
+  method        PaymentMethod?
+  reference     String?
+  paidAt        DateTime
+  raw           Json?
+  createdAt     DateTime            @default(now())
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invoice InvoiceLink  @relation(fields: [invoiceLinkId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, provider, externalId])
+  @@index([orgId, paidAt])
+  @@index([invoiceLinkId])
+}
+
+model IntegrationEvent {
+  id         String                 @id @default(cuid())
+  orgId      String
+  provider   IntegrationProvider    @default(DOTNAPPS_INVOICE)
+  eventType  String
+  externalId String
+  status     IntegrationEventStatus @default(PROCESSED)
+  error      String?
+  payload    Json?
+  receivedAt DateTime               @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, provider, eventType, externalId])
+  @@index([orgId, receivedAt])
+}
+
+// ---------------------------------------------------------------------------
 // Later phases attach here:
-//   CustomField, CustomFieldValue, QuotationLink, InvoiceLink, PaymentEvent,
-//   Notification, ReminderRule, ReminderExecution, ImportJob, ImportRowError,
-//   SubscriptionPlan, Subscription, UsageRecord, Integration.
+//   CustomField, CustomFieldValue, Notification, ReminderRule,
+//   ReminderExecution, ImportJob, ImportRowError, SubscriptionPlan,
+//   Subscription, UsageRecord.
 // ---------------------------------------------------------------------------

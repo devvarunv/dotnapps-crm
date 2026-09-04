@@ -8,6 +8,7 @@ import { can } from "@/lib/rbac";
 import { formatDate } from "@/lib/utils";
 import { OPEN_LEAD_STATUSES } from "@/lib/crm/labels";
 import { formatMoney } from "@/lib/crm/sales";
+import { getInvoiceIntegration } from "@/lib/integrations/invoice";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/primitives";
 import { buttonClassName } from "@/components/ui/button";
@@ -96,6 +97,14 @@ export default async function DashboardPage() {
       }),
     ]);
 
+  const integration = await getInvoiceIntegration(ctx.org.id);
+  const revenue = integration.enabled
+    ? await prisma.paymentEvent.aggregate({
+        where: { orgId: ctx.org.id },
+        _sum: { amount: true },
+      })
+    : null;
+
   const conversion =
     totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : null;
 
@@ -105,7 +114,16 @@ export default async function DashboardPage() {
     { label: "Open deals", value: String(openDealCount), hint: "In pipeline" },
     { label: "Open pipeline", value: formatMoney(openDealValue._sum.value), hint: "Sum of open deals" },
     { label: "Won deals", value: String(wonDealCount), hint: formatMoney(wonDealValue._sum.value) },
-    { label: "Conversion rate", value: conversion === null ? "—" : `${conversion}%`, hint: "Leads converted" },
+    revenue
+      ? {
+          label: "Revenue collected",
+          value: formatMoney(revenue._sum.amount),
+          hint:
+            integration.mode === "MOCK"
+              ? "Dotnapps Invoice (sandbox)"
+              : "From Dotnapps Invoice",
+        }
+      : { label: "Conversion rate", value: conversion === null ? "—" : `${conversion}%`, hint: "Leads converted" },
   ];
 
   const canInvite = can(ctx.role, "members:invite");

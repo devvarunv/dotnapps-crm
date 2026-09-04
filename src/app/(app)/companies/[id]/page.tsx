@@ -14,8 +14,14 @@ import { buttonClassName } from "@/components/ui/button";
 import { TagBadge } from "@/components/app/tag-badge";
 import { Timeline } from "@/components/app/timeline";
 import { logActivityAction } from "@/app/(app)/activities/actions";
+import { getInvoiceIntegration } from "@/lib/integrations/invoice";
 import { setCompanyArchivedAction } from "../actions";
 import { Addresses } from "./addresses";
+
+function money(a: { toString(): string } | null, currency = "USD") {
+  if (a == null) return "—";
+  return Number(a).toLocaleString("en-US", { style: "currency", currency, maximumFractionDigits: 0 });
+}
 
 export const metadata: Metadata = { title: "Company" };
 
@@ -52,6 +58,15 @@ export default async function CompanyDetailPage({
     },
   });
   if (!company) notFound();
+
+  const [integration, invoiceTotals] = await Promise.all([
+    getInvoiceIntegration(ctx.org.id),
+    prisma.invoiceLink.aggregate({
+      where: { orgId: ctx.org.id, companyId: company.id, status: { notIn: ["VOID", "DRAFT"] } },
+      _sum: { amount: true, amountPaid: true, balance: true },
+      _count: true,
+    }),
+  ]);
 
   const canEdit = can(ctx.role, "companies:edit");
   const canAddContact = can(ctx.role, "contacts:create");
@@ -213,10 +228,35 @@ export default async function CompanyDetailPage({
           <Card>
             <CardHeader><CardTitle>Financials</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Totals from Dotnapps Invoice appear here once the Revenue
-                integration is connected. CRM does not calculate them.
-              </p>
+              {!integration.configured ? (
+                <p className="text-sm text-muted-foreground">
+                  Totals from Dotnapps Invoice appear here once the integration
+                  is connected. CRM does not calculate them.
+                </p>
+              ) : invoiceTotals._count === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No invoices from Dotnapps Invoice for this company yet.
+                </p>
+              ) : (
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Billed</dt>
+                    <dd className="tabular-nums">{money(invoiceTotals._sum.amount)}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">Collected</dt>
+                    <dd className="tabular-nums">{money(invoiceTotals._sum.amountPaid)}</dd>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <dt>Outstanding</dt>
+                    <dd className="tabular-nums">{money(invoiceTotals._sum.balance)}</dd>
+                  </div>
+                  <p className="pt-1 text-xs text-muted-foreground">
+                    Per-invoice figures come from Dotnapps Invoice
+                    {integration.mode === "MOCK" ? " (sandbox)" : ""}.
+                  </p>
+                </dl>
+              )}
             </CardContent>
           </Card>
         </div>

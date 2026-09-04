@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { User, Building2, Users, Tags, KanbanSquare, ChevronRight, Lock } from "lucide-react";
+import { User, Building2, Users, Tags, KanbanSquare, Plug, ChevronRight, Lock } from "lucide-react";
 
 import { requireOrgContext } from "@/lib/context";
 import { can } from "@/lib/rbac";
@@ -47,6 +47,13 @@ export default async function SettingsPage() {
       title: "Tags",
       desc: "Shared labels for leads, contacts and companies.",
       show: can(ctx.role, "org:manage"),
+    },
+    {
+      href: "/settings/integrations",
+      icon: Plug,
+      title: "Integrations",
+      desc: "Connect Dotnapps Invoice for quotations, invoices and payments.",
+      show: can(ctx.role, "integration:manage"),
     },
   ].filter((s) => s.show);
 

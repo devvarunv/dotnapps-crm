@@ -2,13 +2,13 @@
 
 Turn leads into customers. Customers into revenue.
 
-A modern, multi-tenant CRM. This repository currently contains **Phase 1 —
-Foundation**, **Phase 2 — CRM Core**, and **Phase 3 — Sales Pipeline** from the
-product specification: authentication, organizations and tenant isolation,
-server-side RBAC, an audit log, the app shell, Leads / Contacts / Companies with
-Customer-360 detail views, tags, search, filtering, bulk actions, CSV export and
-lead conversion, plus Deals, configurable Pipelines, a drag-and-drop Kanban
-board, Tasks, and a unified Activity timeline.
+A modern, multi-tenant CRM. This repository currently contains **Phases 1–4**
+from the product specification: Foundation (auth, tenancy, RBAC, audit),
+CRM Core (Leads / Contacts / Companies, tags, search, bulk actions, conversion),
+Sales Pipeline (Deals, configurable pipelines, a drag-and-drop Kanban board,
+Tasks, a unified Activity timeline), and the **Dotnapps Invoice revenue
+integration** (quotations, invoices, payments via a configurable provider with
+signed webhooks, plus a labelled sandbox mode).
 
 > **No AI in V1.** The architecture is kept modular so AI features can be added
 > in V2, but none are present.
@@ -116,6 +116,46 @@ board, Tasks, and a unified Activity timeline.
   for fast filtering; the stage remains the source of truth.
 - Board drag-and-drop uses native HTML5 DnD (no external library).
 
+## What's implemented (Phase 4 — Dotnapps Invoice revenue integration)
+
+CRM owns the relationship and sales process; **Dotnapps Invoice stays the
+financial source of truth**. The CRM only mirrors provider values into
+`QuotationLink` / `InvoiceLink` / `PaymentEvent`, keyed by the provider's
+`externalId`, and never computes taxes, balances or totals itself.
+
+- **`/settings/integrations`** (`integration:manage`): connect Dotnapps
+  Invoice. Base URL + API key (AES-256-GCM encrypted at rest via `AUTH_SECRET`),
+  a generated webhook signing secret, "advance stage on quotation accept"
+  toggle, **Test connection**, enable/disable, disconnect, rotate secret.
+  Two modes:
+  - **Live** — real HTTP calls to the configured base URL.
+  - **Mock** — a built-in, clearly-labelled sandbox so the flows are usable
+    without a real account. Every screen showing mock data carries a sandbox
+    banner; the CRM never reports success it did not observe.
+- **Webhook** `POST /api/integrations/invoice/webhook?org=<id>` — verifies an
+  HMAC-SHA256 `X-Dotnapps-Signature` against the org's secret (missing/invalid
+  → 401), idempotent on `(eventType, externalId)` via `IntegrationEvent`,
+  handles `quotation.*` / `invoice.*` / `payment.*`. Accepting a quotation
+  optionally advances the linked deal to the next open stage and logs it.
+- **Deal → Revenue panel**: setup state when not connected; when connected,
+  **Create quotation** (calls the provider / mock), lists linked quotations,
+  invoices and payments with links out, and — in mock mode — buttons to
+  simulate `accepted` / `invoice` / `payment` webhooks against the sandbox.
+- **`/quotations`, `/invoices`, `/payments`**: read-only lists from the link
+  tables with a setup state; invoices show billed / collected / outstanding
+  roll-ups (aggregates of provider values, not recalculated).
+- **Company detail** shows billed / collected / outstanding from `InvoiceLink`s.
+- **Super Admin** gains an integration-health panel (status, mode, last check,
+  failed webhook count). **Dashboard** shows revenue collected when connected.
+
+### Integration notes
+
+- Secrets are stored as AES-256-GCM ciphertext; `AUTH_SECRET` is the key
+  material, so nothing sensitive is in source or plaintext in the DB.
+- The mock provider (`src/lib/integrations/invoice-mock.ts`) returns the same
+  DTOs a real provider would; swapping in a real Dotnapps Invoice account is a
+  base-URL + API-key change plus pointing its webhooks at the endpoint above.
+
 ## Local setup
 
 ### 1. PostgreSQL
@@ -194,9 +234,12 @@ src/app/(app)/              authenticated shell
   deals/                        list + [id] + [id]/edit + new + export + actions
   pipeline/                     Kanban board
   tasks/ activities/            task views + global activity feed
+  quotations/ invoices/ payments/  read-only revenue-link lists
   search/                       global search
-  settings/                     profile, organization, team, tags, pipelines
+  settings/                     profile, organization, team, tags, pipelines, integrations
 src/lib/crm/                sales.ts (pipeline/activity helpers) + labels/query/csv/service/guard
+src/lib/integrations/       invoice client (live + mock), webhook HMAC, event sync
+src/app/api/integrations/invoice/webhook   signed provider webhook endpoint
 src/app/admin/              Super Admin (separate layout + guard)
 ```
 
@@ -204,10 +247,10 @@ src/app/admin/              Super Admin (separate layout + guard)
 
 - `package.json#prisma` (the `seed` hook) is deprecated in favour of
   `prisma.config.ts` in Prisma 7 — migrate before upgrading.
-- **Phase 4 (Dotnapps Invoice Revenue Integration: QuotationLink, InvoiceLink,
-  PaymentEvent)** attaches to the models block reserved at the bottom of
-  `schema.prisma`.
-- Still open in CRM Core / Sales: CSV **import** wizard, custom fields, per-user
-  record visibility scoping, multi-currency roll-ups.
-- Email delivery, subscription/billing, and the Dotnapps Invoice integration are
-  later phases; honest placeholder states for them are already in the UI.
+- **Phase 5 (Rule-based follow-up automation — no AI)**: `ReminderRule`,
+  `ReminderExecution`, plus a background job runner. Idempotent, logged,
+  admin-toggleable.
+- Still open across phases: CSV **import** wizard, custom fields, per-user
+  record visibility scoping, multi-currency roll-ups, email delivery for
+  invites/notifications.
+- Subscription/billing (Phase 7) still shows honest placeholder states in the UI.

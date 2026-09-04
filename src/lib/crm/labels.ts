@@ -7,6 +7,9 @@ import type {
   TaskPriority,
   ActivityType,
   StageKind,
+  QuotationStatus,
+  InvoiceStatus,
+  PaymentMethod,
 } from "@prisma/client";
 
 export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
@@ -153,6 +156,57 @@ export const LOGGABLE_ACTIVITY_TYPES: ActivityType[] = [
   "FOLLOW_UP",
   "DEMO",
 ];
+
+/* ------------------------------------------------------ Revenue links ----- */
+
+export const QUOTATION_STATUS_LABELS: Record<QuotationStatus, string> = {
+  DRAFT: "Draft",
+  SENT: "Sent",
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+  EXPIRED: "Expired",
+  CONVERTED: "Converted",
+};
+
+export const QUOTATION_STATUSES = Object.keys(QUOTATION_STATUS_LABELS) as QuotationStatus[];
+
+export const QUOTATION_STATUS_TONES: Record<QuotationStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
+  DRAFT: "neutral",
+  SENT: "brand",
+  ACCEPTED: "success",
+  DECLINED: "danger",
+  EXPIRED: "warning",
+  CONVERTED: "success",
+};
+
+export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  DRAFT: "Draft",
+  SENT: "Sent",
+  PARTIAL: "Part-paid",
+  PAID: "Paid",
+  OVERDUE: "Overdue",
+  VOID: "Void",
+};
+
+export const INVOICE_STATUSES = Object.keys(INVOICE_STATUS_LABELS) as InvoiceStatus[];
+
+export const INVOICE_STATUS_TONES: Record<InvoiceStatus, "neutral" | "brand" | "success" | "warning" | "danger"> = {
+  DRAFT: "neutral",
+  SENT: "brand",
+  PARTIAL: "warning",
+  PAID: "success",
+  OVERDUE: "danger",
+  VOID: "neutral",
+};
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  CARD: "Card",
+  BANK_TRANSFER: "Bank transfer",
+  CASH: "Cash",
+  CHEQUE: "Cheque",
+  UPI: "UPI",
+  OTHER: "Other",
+};
 
 export const DEFAULT_TAGS: { name: string; color: string }[] = [
   { name: "VIP", color: "#7c3aed" },

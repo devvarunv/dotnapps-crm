@@ -57,4 +57,18 @@ export const AUDIT_LABELS: Record<string, string> = {
   "task.delete": "Task deleted",
 
   "pipeline.create": "Pipeline created",
+
+  "integration.configure": "Integration configured",
+  "integration.enable": "Integration enabled",
+  "integration.disable": "Integration disabled",
+  "integration.disconnect": "Integration disconnected",
+  "integration.rotate_webhook_secret": "Webhook secret rotated",
+  "integration.quotation.create": "Quotation created via provider",
+  "integration.quotation.accepted": "Quotation accepted",
+  "integration.quotation.declined": "Quotation declined",
+  "integration.quotation.updated": "Quotation updated",
+  "integration.invoice.created": "Invoice created",
+  "integration.invoice.updated": "Invoice updated",
+  "integration.invoice.paid": "Invoice paid",
+  "integration.payment.recorded": "Payment recorded",
 };

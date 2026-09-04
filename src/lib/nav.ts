@@ -60,9 +60,9 @@ export const NAV: NavGroup[] = [
   {
     label: "Revenue",
     items: [
-      { label: "Quotations", href: "/quotations", icon: FileText, permission: "quotations:view", phase: 4 },
-      { label: "Invoices", href: "/invoices", icon: ReceiptText, permission: "invoices:view", phase: 4 },
-      { label: "Payments", href: "/payments", icon: CreditCard, permission: "payments:view", phase: 4 },
+      { label: "Quotations", href: "/quotations", icon: FileText, permission: "quotations:view", phase: 1 },
+      { label: "Invoices", href: "/invoices", icon: ReceiptText, permission: "invoices:view", phase: 1 },
+      { label: "Payments", href: "/payments", icon: CreditCard, permission: "payments:view", phase: 1 },
     ],
   },
   {

@@ -16,6 +16,7 @@ export const PERMISSIONS = [
   "members:manage", // change role, suspend, remove
   "settings:manage",
   "billing:manage",
+  "integration:manage",
   "audit:view",
   "export:data",
   "import:data",

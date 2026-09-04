@@ -21,8 +21,10 @@ import { TagBadge } from "@/components/app/tag-badge";
 import { Timeline } from "@/components/app/timeline";
 import { logActivityAction } from "@/app/(app)/activities/actions";
 import { TasksList, AddTaskInline } from "@/app/(app)/tasks/tasks-client";
+import { getInvoiceIntegration } from "@/lib/integrations/invoice";
 import { setDealArchivedAction } from "../actions";
 import { StageSelect, WinLose } from "./deal-actions";
+import { RevenueCard } from "./revenue";
 
 export const metadata: Metadata = { title: "Deal" };
 
@@ -56,9 +58,19 @@ export default async function DealDetailPage({
         orderBy: { occurredAt: "desc" },
         include: { createdBy: { select: { name: true } } },
       },
+      quotationLinks: { orderBy: { createdAt: "desc" } },
+      invoiceLinks: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!deal) notFound();
+
+  const [integration, payments] = await Promise.all([
+    getInvoiceIntegration(ctx.org.id),
+    prisma.paymentEvent.findMany({
+      where: { orgId: ctx.org.id, invoice: { dealId: deal.id } },
+      orderBy: { paidAt: "desc" },
+    }),
+  ]);
 
   const canEdit = can(ctx.role, "deals:edit");
   const members = canEdit
@@ -162,6 +174,44 @@ export default async function DealDetailPage({
                   parentLabel: null,
                   parentHref: null,
                   overdue: !!t.dueAt && t.dueAt.getTime() < now && t.status !== "COMPLETED",
+                }))}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Revenue · Dotnapps Invoice</CardTitle></CardHeader>
+            <CardContent>
+              <RevenueCard
+                dealId={deal.id}
+                summary={integration}
+                canEdit={canEdit}
+                quotations={deal.quotationLinks.map((q) => ({
+                  id: q.id,
+                  number: q.number,
+                  status: q.status,
+                  amount: q.amount ? q.amount.toString() : null,
+                  currency: q.currency,
+                  expiryDate: q.expiryDate?.toISOString() ?? null,
+                  url: q.url,
+                }))}
+                invoices={deal.invoiceLinks.map((inv) => ({
+                  id: inv.id,
+                  number: inv.number,
+                  status: inv.status,
+                  amount: inv.amount ? inv.amount.toString() : null,
+                  balance: inv.balance ? inv.balance.toString() : null,
+                  currency: inv.currency,
+                  dueDate: inv.dueDate?.toISOString() ?? null,
+                  url: inv.url,
+                }))}
+                payments={payments.map((p) => ({
+                  id: p.id,
+                  amount: p.amount.toString(),
+                  currency: p.currency,
+                  method: p.method,
+                  reference: p.reference,
+                  paidAt: p.paidAt.toISOString(),
                 }))}
               />
             </CardContent>

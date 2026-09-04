@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { formatDate } from "@/lib/utils";
 import { AUDIT_LABELS } from "@/lib/audit-labels";
-import { Card } from "@/components/ui/primitives";
+import { Card, Badge } from "@/components/ui/primitives";
 
 export const metadata: Metadata = { title: "Super Admin" };
 
@@ -31,6 +31,12 @@ export default async function AdminDashboardPage() {
         },
       }),
     ]);
+
+  const integrations = await prisma.integration.findMany({
+    orderBy: { updatedAt: "desc" },
+    include: { org: { select: { name: true } } },
+  });
+  const failedEvents = await prisma.integrationEvent.count({ where: { status: "FAILED" } });
 
   const stats = [
     { label: "Users", value: userCount },
@@ -94,6 +100,47 @@ export default async function AdminDashboardPage() {
               )}
             </tbody>
           </table>
+        </Card>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold">
+          Integration health
+          {failedEvents > 0 && (
+            <span className="ml-2 text-xs font-normal text-destructive">
+              {failedEvents} failed webhook event{failedEvents === 1 ? "" : "s"}
+            </span>
+          )}
+        </h2>
+        <Card className="divide-y divide-border">
+          {integrations.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+              No organisations have configured an integration.
+            </p>
+          ) : (
+            integrations.map((i) => (
+              <div key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
+                <span className="font-medium">{i.org.name}</span>
+                <span className="text-xs text-muted-foreground">{i.provider}</span>
+                <Badge
+                  tone={
+                    i.status === "CONNECTED"
+                      ? "success"
+                      : i.status === "ERROR"
+                        ? "danger"
+                        : "warning"
+                  }
+                >
+                  {i.status.toLowerCase()}
+                </Badge>
+                <Badge tone="neutral">{i.mode.toLowerCase()}</Badge>
+                {i.lastError && <span className="text-xs text-destructive">{i.lastError}</span>}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {i.lastCheckedAt ? `checked ${formatDate(i.lastCheckedAt)}` : "not checked"}
+                </span>
+              </div>
+            ))
+          )}
         </Card>
       </section>
 
