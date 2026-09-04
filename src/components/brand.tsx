@@ -16,8 +16,8 @@ export function LogoMark({ className }: { className?: string }) {
       aria-hidden="true"
     >
       <path d="M24 24H40V40H24V24Z" />
-      <path d="M24 50L40 44V70H24V50Z" />
-      <path d="M46 27L58 27L71 40L71 64L65 69L56 69L56 40L46 40Z" />
+      <path d="M24 55L40 48V78H24V55Z" />
+      <path d="M46 24L58 24L71 37L71 73L66 78L53 78L53 37L46 37Z" />
     </svg>
   );
 }
