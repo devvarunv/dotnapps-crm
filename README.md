@@ -2,7 +2,7 @@
 
 Turn leads into customers. Customers into revenue.
 
-A modern, multi-tenant CRM. This repository currently contains **Phases 1–7**
+A modern, multi-tenant CRM. This repository implements all **8 build phases**
 from the product specification: Foundation (auth, tenancy, RBAC, audit),
 CRM Core (Leads / Contacts / Companies, tags, search, bulk actions, conversion),
 Sales Pipeline (Deals, configurable pipelines, a drag-and-drop Kanban board,
@@ -10,9 +10,13 @@ Tasks, a unified Activity timeline), the **Dotnapps Invoice revenue
 integration** (quotations, invoices, payments via a configurable provider with
 signed webhooks, plus a labelled sandbox mode), **rule-based follow-up
 automation** with in-app notifications (explicit condition/action rules, no AI),
-**reports & analytics** computed at read time from source records, and
-**SaaS subscriptions** — configurable plans with server-side usage limits and a
-trial / grace / suspension lifecycle.
+**reports & analytics** computed at read time from source records, **SaaS
+subscriptions** (configurable plans, server-side usage limits, a trial / grace
+/ suspension lifecycle), and **hardening** — rate limiting, security headers,
+error boundaries, and an automated test suite. See "What's implemented" per
+phase below, and [docs/TESTING.md](docs/TESTING.md) /
+[docs/OPERATIONS.md](docs/OPERATIONS.md) for the honest state of testing and
+ops readiness.
 
 > **No AI in V1.** The architecture is kept modular so AI features can be added
 > in V2, but none are present.
@@ -254,6 +258,33 @@ app logic**; a plan's `limits` JSON drives every entitlement check.
   the only ways a subscription becomes `ACTIVE`. Swapping in a real provider
   means wiring its checkout + webhooks to the same lifecycle transitions.
 
+## What's implemented (Phase 8 — hardening)
+
+- **Rate limiting** (`src/lib/rate-limit.ts`) on login, signup, password
+  change, the Invoice webhook, and both cron endpoints (429 once exceeded).
+  In-process by design — see [docs/OPERATIONS.md](docs/OPERATIONS.md) for the
+  multi-instance caveat.
+- **Security headers** (`next.config.ts`): CSP, `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`,
+  HSTS.
+- **Error handling**: root `error.tsx` / `global-error.tsx` boundaries and a
+  branded `not-found.tsx`, each logging a structured event
+  (`src/lib/logger.ts`) at the point a real error tracker would hook in.
+- **IDOR/BOLA audit**: every object-scoped mutation was checked to confirm it
+  verifies `orgId` ownership before acting; codified as integration tests
+  (below) rather than left as a one-time manual pass.
+- **Automated test suite** — Vitest unit tests (permissions, crypto, webhook
+  signatures, billing math, query parsing, rate limiting, validation — no DB)
+  plus integration tests against a real Postgres database (tenant isolation /
+  cross-tenant access, plan-limit enforcement, billing suspension lifecycle,
+  automation idempotency, webhook idempotency). See
+  [docs/TESTING.md](docs/TESTING.md) for the full breakdown, `npm test` to run
+  it, and what's still manual vs. automated.
+- **Operations runbook** — [docs/OPERATIONS.md](docs/OPERATIONS.md): deploy
+  steps, required env vars, backup/restore, scheduled-job wiring, monitoring
+  hooks, and known gaps (no nonce-based CSP yet, a transitive `postcss`
+  advisory in Next 15.1.x).
+
 ## Local setup
 
 ### 1. PostgreSQL
@@ -311,6 +342,9 @@ All use password `Password123!`:
 | `npm run db:seed` | Seed demo data |
 | `npm run db:studio` | Prisma Studio |
 | `npm run db:reset` | Drop, re-migrate, re-seed |
+| `npm test` | Unit tests (no database) |
+| `npm run test:integration` | Integration tests (needs `dotnapps_crm_test`, see [docs/TESTING.md](docs/TESTING.md)) |
+| `npm run test:all` | Everything |
 
 ## Project layout
 
@@ -347,19 +381,36 @@ src/app/api/integrations/invoice/webhook   signed provider webhook endpoint
 src/app/api/automation/run                 secret-protected scheduler endpoint
 src/app/api/billing/lifecycle              secret-protected billing lifecycle job
 src/app/admin/              Super Admin — overview, plans, subscriptions
+src/lib/rate-limit.ts       in-process sliding-window limiter
+src/lib/logger.ts           structured JSON server logging
+src/app/error.tsx / global-error.tsx / not-found.tsx   error & 404 boundaries
+tests/unit/                 Vitest, no database
+tests/integration/          Vitest against a dedicated Postgres test database
+docs/TESTING.md             what's automated vs. manual
+docs/OPERATIONS.md          deploy, backup, monitoring, rate-limit notes
 ```
 
 ## Notes / next steps
 
+All 8 phases from the spec's build order are implemented. What's genuinely
+still open, honestly:
+
 - `package.json#prisma` (the `seed` hook) is deprecated in favour of
   `prisma.config.ts` in Prisma 7 — migrate before upgrading.
-- **Phase 8 (hardening)**: rate limiting on sensitive endpoints, an automated
-  test suite (unit + integration + E2E + cross-tenant/authorization security
-  tests), accessibility + responsive passes, monitoring/error logging, and a
-  deploy/backup runbook.
-- `reports:view` currently shows the salesperson-performance table to every
-  role; a manager-only gate for that section is a later refinement.
-- Still open across phases: CSV **import** wizard, custom fields, per-user
-  record visibility scoping, multi-currency roll-ups, email delivery for
-  invites/notifications.
-- Subscription/billing (Phase 7) still shows honest placeholder states in the UI.
+- **CSV import** (mapping / validation / preview wizard) — export exists,
+  import doesn't yet.
+- **Custom fields** (`CustomField`/`CustomFieldValue`) — modelled in the spec,
+  not built.
+- **Per-user record visibility** — CRM read access is currently org-wide for
+  every role; a "sales sees only owned/assigned" scope is a refinement to
+  each module's `query.ts` where-builder, not a schema change.
+- **Email delivery** — invites, notifications and billing-lifecycle emails
+  currently show a real, in-app-only state (invite links are generated and
+  shown, not emailed).
+- `reports:view` shows the salesperson-performance table to every role; a
+  manager-only gate for that section is a later refinement.
+- Automated **E2E** coverage (Playwright) and a nonce-based CSP are the two
+  largest gaps called out in [docs/TESTING.md](docs/TESTING.md) and
+  [docs/OPERATIONS.md](docs/OPERATIONS.md) respectively.
+- Multi-currency roll-ups (reports and revenue currently assume USD display
+  formatting even though records store their own `currency`).

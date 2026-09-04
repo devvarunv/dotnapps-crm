@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { recordAudit } from "@/lib/audit";
 import { loginSchema, signupSchema } from "@/lib/validation";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
+import { rateLimit, clientIp, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function loginAction(
   _prev: ActionState,
@@ -19,6 +20,12 @@ export async function loginAction(
   });
   if (!parsed.success) {
     return { error: "Check the fields below.", fieldErrors: fieldErrors(parsed.error) };
+  }
+
+  const ip = await clientIp();
+  const rl = rateLimit(`login:${ip}:${parsed.data.email}`, RATE_LIMITS.login.limit, RATE_LIMITS.login.windowMs);
+  if (!rl.allowed) {
+    return { error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
   }
 
   const callbackUrl = formValue(formData, "callbackUrl") || "/dashboard";
@@ -51,6 +58,12 @@ export async function signupAction(
   });
   if (!parsed.success) {
     return { error: "Check the fields below.", fieldErrors: fieldErrors(parsed.error) };
+  }
+
+  const ip = await clientIp();
+  const rl = rateLimit(`signup:${ip}`, RATE_LIMITS.signup.limit, RATE_LIMITS.signup.windowMs);
+  if (!rl.allowed) {
+    return { error: `Too many accounts created from this network. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
   }
 
   const { name, email, password } = parsed.data;

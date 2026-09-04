@@ -6,6 +6,7 @@ import { getWebhookSecret } from "@/lib/integrations/invoice";
 import { verifyWebhookSignature } from "@/lib/integrations/webhook";
 import { processInvoiceEvent } from "@/lib/integrations/invoice-sync";
 import type { WebhookEvent } from "@/lib/integrations/invoice-types";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 const eventSchema = z.object({
   type: z.enum([
@@ -23,6 +24,11 @@ const eventSchema = z.object({
 export async function POST(req: NextRequest) {
   const orgId = req.nextUrl.searchParams.get("org");
   if (!orgId) return json({ error: "Missing org" }, 400);
+
+  const rl = rateLimit(`webhook:${orgId}`, RATE_LIMITS.webhook.limit, RATE_LIMITS.webhook.windowMs);
+  if (!rl.allowed) {
+    return json({ error: "Rate limit exceeded" }, 429);
+  }
 
   const integration = await prisma.integration.findUnique({
     where: { orgId_provider: { orgId, provider: "DOTNAPPS_INVOICE" } },

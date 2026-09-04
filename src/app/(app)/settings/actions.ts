@@ -13,6 +13,7 @@ import {
   updateProfileSchema,
 } from "@/lib/validation";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
+import { rateLimit, clientIp, RATE_LIMITS } from "@/lib/rate-limit";
 
 export async function updateProfileAction(
   _prev: ActionState,
@@ -48,6 +49,16 @@ export async function changePasswordAction(
   formData: FormData,
 ): Promise<ActionState> {
   const ctx = await requireOrgContext();
+
+  const ip = await clientIp();
+  const rl = rateLimit(
+    `pwchange:${ctx.user.id}:${ip}`,
+    RATE_LIMITS.passwordChange.limit,
+    RATE_LIMITS.passwordChange.windowMs,
+  );
+  if (!rl.allowed) {
+    return { error: `Too many attempts. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
+  }
 
   const parsed = changePasswordSchema.safeParse({
     currentPassword: formValue(formData, "currentPassword"),

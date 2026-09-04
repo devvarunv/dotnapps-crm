@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { runAutomation } from "@/lib/automation/engine";
+import { rateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 
 /**
  * Scheduler entrypoint. Point a cron job at:
@@ -7,6 +8,10 @@ import { runAutomation } from "@/lib/automation/engine";
  * Optionally scope to one org with ?org=<id>.
  */
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const rl = rateLimit(`cron:automation:${ip}`, RATE_LIMITS.cron.limit, RATE_LIMITS.cron.windowMs);
+  if (!rl.allowed) return json({ error: "Rate limit exceeded" }, 429);
+
   const secret = process.env.AUTOMATION_SECRET;
   if (!secret) {
     return json({ error: "AUTOMATION_SECRET is not set" }, 500);
