@@ -51,10 +51,10 @@ export const NAV: NavGroup[] = [
   {
     label: "Sales",
     items: [
-      { label: "Deals", href: "/deals", icon: Handshake, permission: "deals:view", phase: 3 },
-      { label: "Pipeline", href: "/pipeline", icon: KanbanSquare, permission: "deals:view", phase: 3 },
-      { label: "Tasks", href: "/tasks", icon: CheckSquare, permission: "tasks:view", phase: 3 },
-      { label: "Activities", href: "/activities", icon: Activity, permission: "activities:view", phase: 3 },
+      { label: "Deals", href: "/deals", icon: Handshake, permission: "deals:view", phase: 1 },
+      { label: "Pipeline", href: "/pipeline", icon: KanbanSquare, permission: "deals:view", phase: 1 },
+      { label: "Tasks", href: "/tasks", icon: CheckSquare, permission: "tasks:view", phase: 1 },
+      { label: "Activities", href: "/activities", icon: Activity, permission: "activities:view", phase: 1 },
     ],
   },
   {

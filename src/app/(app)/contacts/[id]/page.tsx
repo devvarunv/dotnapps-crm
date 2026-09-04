@@ -13,8 +13,9 @@ import { DeniedState } from "@/components/app/denied";
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui/primitives";
 import { buttonClassName } from "@/components/ui/button";
 import { TagBadge } from "@/components/app/tag-badge";
-import { NoteThread } from "@/components/app/note-thread";
-import { addContactNoteAction, setContactArchivedAction } from "../actions";
+import { Timeline } from "@/components/app/timeline";
+import { logActivityAction } from "@/app/(app)/activities/actions";
+import { setContactArchivedAction } from "../actions";
 
 export const metadata: Metadata = { title: "Contact" };
 
@@ -35,9 +36,14 @@ export default async function ContactDetailPage({
       company: { select: { id: true, name: true } },
       tags: { select: { id: true, name: true, color: true } },
       convertedFromLeads: { select: { id: true, name: true } },
-      noteItems: {
-        orderBy: { createdAt: "desc" },
-        include: { author: { select: { name: true } } },
+      deals: {
+        where: { archived: false },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, name: true, status: true },
+      },
+      activities: {
+        orderBy: { occurredAt: "desc" },
+        include: { createdBy: { select: { name: true } } },
       },
     },
   });
@@ -114,18 +120,21 @@ export default async function ContactDetailPage({
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Notes & timeline</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Activity &amp; timeline</CardTitle></CardHeader>
             <CardContent>
-              <NoteThread
+              <Timeline
                 parentField="contactId"
                 parentId={contact.id}
-                canAdd={canEdit}
-                addAction={addContactNoteAction}
-                notes={contact.noteItems.map((n) => ({
-                  id: n.id,
-                  body: n.body,
-                  author: n.author?.name ?? null,
-                  createdAt: n.createdAt.toISOString(),
+                canAdd={can(ctx.role, "activities:create")}
+                logAction={logActivityAction}
+                items={contact.activities.map((a) => ({
+                  id: a.id,
+                  type: a.type,
+                  source: a.source,
+                  subject: a.subject,
+                  body: a.body,
+                  author: a.createdBy?.name ?? null,
+                  occurredAt: a.occurredAt.toISOString(),
                 }))}
               />
             </CardContent>
@@ -146,9 +155,21 @@ export default async function ContactDetailPage({
                   ))}
                 </div>
               )}
+              {contact.deals.length > 0 ? (
+                <div>
+                  <p className="text-xs text-muted-foreground">Deals</p>
+                  {contact.deals.map((d) => (
+                    <Link key={d.id} href={`/deals/${d.id}`} className="block text-primary hover:underline">
+                      {d.name}
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No deals yet.</p>
+              )}
               <p className="text-muted-foreground">
-                Deals, quotations, invoices and payments appear here once the
-                Sales and Revenue phases are connected.
+                Quotations, invoices and payments appear here once the Revenue
+                phase is connected.
               </p>
             </CardContent>
           </Card>

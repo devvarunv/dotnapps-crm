@@ -12,8 +12,9 @@ import { DeniedState } from "@/components/app/denied";
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui/primitives";
 import { buttonClassName } from "@/components/ui/button";
 import { TagBadge } from "@/components/app/tag-badge";
-import { NoteThread } from "@/components/app/note-thread";
-import { addCompanyNoteAction, setCompanyArchivedAction } from "../actions";
+import { Timeline } from "@/components/app/timeline";
+import { logActivityAction } from "@/app/(app)/activities/actions";
+import { setCompanyArchivedAction } from "../actions";
 import { Addresses } from "./addresses";
 
 export const metadata: Metadata = { title: "Company" };
@@ -39,9 +40,14 @@ export default async function CompanyDetailPage({
         orderBy: { name: "asc" },
         select: { id: true, name: true, title: true, email: true },
       },
-      noteItems: {
-        orderBy: { createdAt: "desc" },
-        include: { author: { select: { name: true } } },
+      deals: {
+        where: { archived: false },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, name: true, status: true },
+      },
+      activities: {
+        orderBy: { occurredAt: "desc" },
+        include: { createdBy: { select: { name: true } } },
       },
     },
   });
@@ -143,18 +149,21 @@ export default async function CompanyDetailPage({
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Notes & timeline</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Activity &amp; timeline</CardTitle></CardHeader>
             <CardContent>
-              <NoteThread
+              <Timeline
                 parentField="companyId"
                 parentId={company.id}
-                canAdd={canEdit}
-                addAction={addCompanyNoteAction}
-                notes={company.noteItems.map((n) => ({
-                  id: n.id,
-                  body: n.body,
-                  author: n.author?.name ?? null,
-                  createdAt: n.createdAt.toISOString(),
+                canAdd={can(ctx.role, "activities:create")}
+                logAction={logActivityAction}
+                items={company.activities.map((a) => ({
+                  id: a.id,
+                  type: a.type,
+                  source: a.source,
+                  subject: a.subject,
+                  body: a.body,
+                  author: a.createdBy?.name ?? null,
+                  occurredAt: a.occurredAt.toISOString(),
                 }))}
               />
             </CardContent>
@@ -179,6 +188,25 @@ export default async function CompanyDetailPage({
                   country: a.country,
                 }))}
               />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>Deals ({company.deals.length})</CardTitle></CardHeader>
+            <CardContent>
+              {company.deals.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No deals yet.</p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {company.deals.map((d) => (
+                    <li key={d.id}>
+                      <Link href={`/deals/${d.id}`} className="font-medium hover:underline">
+                        {d.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
 

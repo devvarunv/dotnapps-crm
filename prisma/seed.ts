@@ -201,17 +201,122 @@ async function main() {
         },
       });
       if (i % 4 === 0) {
-        await prisma.note.create({
+        await prisma.activity.create({
           data: {
             orgId: org.id,
-            authorId: reps[i % reps.length],
+            type: "CALL",
+            source: "MANUAL",
+            subject: "Discovery call",
             body: "Initial discovery call booked. Budget confirmed.",
+            createdById: reps[i % reps.length],
             leadId: lead.id,
           },
         });
       }
     }
     console.log("Seeded 6 companies, 10 contacts, 15 leads, 7 tags.");
+  }
+
+  // --- Sales Pipeline sample data (Phase 3) ------------------------------
+  const dealCount = await prisma.deal.count({ where: { orgId: org.id } });
+  if (dealCount === 0) {
+    const reps = [owner.id, manager.id, sales.id];
+    const companies = await prisma.company.findMany({
+      where: { orgId: org.id },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" },
+    });
+    if (companies.length === 0) {
+      console.log("No companies to attach deals to — skipping sales seed.");
+    } else {
+      const pipeline = await prisma.pipeline.create({
+        data: { orgId: org.id, name: "Sales pipeline", isDefault: true, position: 0 },
+      });
+    const stageDefs: [string, number, "OPEN" | "WON" | "LOST"][] = [
+      ["Qualified", 10, "OPEN"],
+      ["Discovery", 30, "OPEN"],
+      ["Proposal", 60, "OPEN"],
+      ["Negotiation", 80, "OPEN"],
+      ["Won", 100, "WON"],
+      ["Lost", 0, "LOST"],
+    ];
+    const stages = [];
+    for (let i = 0; i < stageDefs.length; i++) {
+      const [name, probability, kind] = stageDefs[i];
+      stages.push(
+        await prisma.pipelineStage.create({
+          data: { orgId: org.id, pipelineId: pipeline.id, name, probability, kind, position: i },
+        }),
+      );
+    }
+
+    const dealContacts = await prisma.contact.findMany({
+      where: { orgId: org.id },
+      select: { id: true, companyId: true },
+    });
+    for (let i = 0; i < 8; i++) {
+      const stage = stages[i % stages.length];
+      const company = companies[i % companies.length];
+      const contact = dealContacts.find((c) => c.companyId === company.id);
+      const deal = await prisma.deal.create({
+        data: {
+          orgId: org.id,
+          name: `${company.name} — ${["Platform rollout", "Renewal", "Expansion", "Pilot"][i % 4]}`,
+          pipelineId: pipeline.id,
+          stageId: stage.id,
+          status: stage.kind === "WON" ? "WON" : stage.kind === "LOST" ? "LOST" : "OPEN",
+          probability: stage.probability,
+          closedAt: stage.kind === "OPEN" ? null : new Date(),
+          companyId: company.id,
+          contactId: contact?.id ?? null,
+          ownerId: reps[i % reps.length],
+          value: new Prisma.Decimal((i + 2) * 8000),
+          currency: "USD",
+          expectedCloseDate: new Date(Date.now() + (i + 3) * 86_400_000),
+          tags: { connect: [{ id: tagByName["High Value"] }] },
+        },
+      });
+      await prisma.activity.create({
+        data: {
+          orgId: org.id,
+          type: "NOTE",
+          source: "SYSTEM",
+          subject: `Deal created in stage “${stage.name}”`,
+          createdById: reps[i % reps.length],
+          dealId: deal.id,
+        },
+      });
+      if (i % 2 === 0) {
+        await prisma.task.create({
+          data: {
+            orgId: org.id,
+            title: `Send proposal to ${company.name}`,
+            status: "TODO",
+            priority: (["MEDIUM", "HIGH", "URGENT"] as const)[i % 3],
+            dueAt: new Date(Date.now() + (i + 1) * 86_400_000),
+            assigneeId: reps[i % reps.length],
+            createdById: owner.id,
+            dealId: deal.id,
+          },
+        });
+      }
+    }
+
+      // A few standalone / overdue tasks.
+      await prisma.task.create({
+        data: {
+          orgId: org.id,
+          title: "Follow up with unassigned leads",
+          status: "TODO",
+          priority: "HIGH",
+          dueAt: new Date(Date.now() - 2 * 86_400_000),
+          assigneeId: sales.id,
+          createdById: manager.id,
+        },
+      });
+
+      console.log("Seeded 1 pipeline (6 stages), 8 deals, ~6 tasks, deal activities.");
+    }
   }
 
   console.log("\nSeed complete. All accounts use password:", DEMO_PASSWORD);

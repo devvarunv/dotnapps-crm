@@ -49,7 +49,7 @@ export default async function LeadsPage({
       include: {
         owner: { select: { id: true, name: true } },
         tags: { select: { id: true, name: true, color: true } },
-        _count: { select: { noteItems: true } },
+        _count: { select: { activities: true } },
       },
     }),
     prisma.membership.findMany({
@@ -154,7 +154,7 @@ export default async function LeadsPage({
               estimatedValue: l.estimatedValue ? l.estimatedValue.toString() : null,
               nextFollowUpAt: l.nextFollowUpAt?.toISOString() ?? null,
               createdAt: l.createdAt.toISOString(),
-              notes: l._count.noteItems,
+              notes: l._count.activities,
               archived: l.archived,
             }))}
             members={memberOptions}

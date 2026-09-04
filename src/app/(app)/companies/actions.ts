@@ -8,8 +8,9 @@ import { recordAudit } from "@/lib/audit";
 import { isRedirectError } from "@/lib/next";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
 import { guard } from "@/lib/crm/guard";
-import { companySchema, addressSchema, noteSchema } from "@/lib/crm/validation";
+import { companySchema, addressSchema } from "@/lib/crm/validation";
 import { resolveOwnerId, resolveTagIds, parseTagNames } from "@/lib/crm/service";
+import { logActivity } from "@/lib/crm/sales";
 
 export async function createCompanyAction(
   _prev: ActionState,
@@ -45,13 +46,12 @@ export async function createCompanyAction(
       },
     });
     if (parsed.data.notesText) {
-      await tx.note.create({
-        data: {
-          orgId: ctx.org.id,
-          authorId: ctx.user.id,
-          body: parsed.data.notesText,
-          companyId: created.id,
-        },
+      await logActivity(tx, {
+        orgId: ctx.org.id,
+        type: "NOTE",
+        body: parsed.data.notesText,
+        createdById: ctx.user.id,
+        companyId: created.id,
       });
     }
     return created;
@@ -150,39 +150,6 @@ export async function setCompanyArchivedAction(formData: FormData): Promise<void
   });
   revalidatePath("/companies");
   revalidatePath(`/companies/${id}`);
-}
-
-export async function addCompanyNoteAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const g = await guard("companies:edit");
-  if ("error" in g) return g.error;
-  const { ctx } = g;
-
-  const parsed = noteSchema.safeParse({
-    body: formValue(formData, "body"),
-    companyId: formValue(formData, "companyId"),
-  });
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-
-  const company = await prisma.company.findFirst({
-    where: { id: parsed.data.companyId, orgId: ctx.org.id },
-    select: { id: true },
-  });
-  if (!company) return { error: "That company no longer exists." };
-
-  await prisma.note.create({
-    data: {
-      orgId: ctx.org.id,
-      authorId: ctx.user.id,
-      body: parsed.data.body,
-      companyId: company.id,
-    },
-  });
-
-  revalidatePath(`/companies/${company.id}`);
-  return { ok: true, message: "Note added." };
 }
 
 export async function saveAddressAction(

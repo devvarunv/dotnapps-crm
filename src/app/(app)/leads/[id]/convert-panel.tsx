@@ -50,6 +50,11 @@ export function ConvertPanel({
         </span>
       </label>
 
+      <label className="flex items-start gap-2">
+        <input type="checkbox" name="createDeal" className="mt-0.5" />
+        <span>Open a deal in the default pipeline</span>
+      </label>
+
       {companies.length > 0 && (
         <div>
           <p className="mb-1 text-muted-foreground">…or link to an existing company</p>

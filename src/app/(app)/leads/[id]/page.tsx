@@ -14,8 +14,9 @@ import { DeniedState } from "@/components/app/denied";
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui/primitives";
 import { buttonClassName } from "@/components/ui/button";
 import { TagBadge } from "@/components/app/tag-badge";
-import { NoteThread } from "@/components/app/note-thread";
-import { addLeadNoteAction, setLeadArchivedAction } from "../actions";
+import { Timeline } from "@/components/app/timeline";
+import { logActivityAction } from "@/app/(app)/activities/actions";
+import { setLeadArchivedAction } from "../actions";
 import { ConvertPanel } from "./convert-panel";
 
 export const metadata: Metadata = { title: "Lead" };
@@ -37,9 +38,10 @@ export default async function LeadDetailPage({
       tags: { select: { id: true, name: true, color: true } },
       convertedContact: { select: { id: true, name: true } },
       convertedCompany: { select: { id: true, name: true } },
-      noteItems: {
-        orderBy: { createdAt: "desc" },
-        include: { author: { select: { name: true } } },
+      convertedDeal: { select: { id: true, name: true } },
+      activities: {
+        orderBy: { occurredAt: "desc" },
+        include: { createdBy: { select: { name: true } } },
       },
     },
   });
@@ -125,18 +127,21 @@ export default async function LeadDetailPage({
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Notes</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Activity &amp; timeline</CardTitle></CardHeader>
             <CardContent>
-              <NoteThread
+              <Timeline
                 parentField="leadId"
                 parentId={lead.id}
-                canAdd={canEdit}
-                addAction={addLeadNoteAction}
-                notes={lead.noteItems.map((n) => ({
-                  id: n.id,
-                  body: n.body,
-                  author: n.author?.name ?? null,
-                  createdAt: n.createdAt.toISOString(),
+                canAdd={can(ctx.role, "activities:create")}
+                logAction={logActivityAction}
+                items={lead.activities.map((a) => ({
+                  id: a.id,
+                  type: a.type,
+                  source: a.source,
+                  subject: a.subject,
+                  body: a.body,
+                  author: a.createdBy?.name ?? null,
+                  occurredAt: a.occurredAt.toISOString(),
                 }))}
               />
             </CardContent>
@@ -160,6 +165,11 @@ export default async function LeadDetailPage({
                   {lead.convertedCompany && (
                     <Link href={`/companies/${lead.convertedCompany.id}`} className="block text-primary hover:underline">
                       → Company: {lead.convertedCompany.name}
+                    </Link>
+                  )}
+                  {lead.convertedDeal && (
+                    <Link href={`/deals/${lead.convertedDeal.id}`} className="block text-primary hover:underline">
+                      → Deal: {lead.convertedDeal.name}
                     </Link>
                   )}
                 </div>

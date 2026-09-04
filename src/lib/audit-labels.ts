@@ -41,4 +41,20 @@ export const AUDIT_LABELS: Record<string, string> = {
   "tag.create": "Tag created",
   "tag.update": "Tag updated",
   "tag.delete": "Tag deleted",
+
+  "deal.create": "Deal created",
+  "deal.update": "Deal updated",
+  "deal.stage_change": "Deal stage changed",
+  "deal.won": "Deal won",
+  "deal.lost": "Deal lost",
+  "deal.archive": "Deal archived",
+  "deal.unarchive": "Deal restored",
+  "deal.export": "Deals exported",
+
+  "task.create": "Task created",
+  "task.update": "Task updated",
+  "task.status": "Task status changed",
+  "task.delete": "Task deleted",
+
+  "pipeline.create": "Pipeline created",
 };

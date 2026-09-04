@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { can } from "@/lib/rbac";
 import { formatDate } from "@/lib/utils";
 import { OPEN_LEAD_STATUSES } from "@/lib/crm/labels";
+import { formatMoney } from "@/lib/crm/sales";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/primitives";
 import { buttonClassName } from "@/components/ui/button";
@@ -60,16 +61,51 @@ export default async function DashboardPage() {
     }),
   ]);
 
+  const [openDealCount, wonDealCount, openDealValue, wonDealValue, closingSoon, myOpenTasks] =
+    await Promise.all([
+      prisma.deal.count({ where: { orgId: ctx.org.id, archived: false, status: "OPEN" } }),
+      prisma.deal.count({ where: { orgId: ctx.org.id, archived: false, status: "WON" } }),
+      prisma.deal.aggregate({
+        where: { orgId: ctx.org.id, archived: false, status: "OPEN" },
+        _sum: { value: true },
+      }),
+      prisma.deal.aggregate({
+        where: { orgId: ctx.org.id, archived: false, status: "WON" },
+        _sum: { value: true },
+      }),
+      prisma.deal.findMany({
+        where: {
+          orgId: ctx.org.id,
+          archived: false,
+          status: "OPEN",
+          expectedCloseDate: {
+            gte: new Date(),
+            lte: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          },
+        },
+        orderBy: { expectedCloseDate: "asc" },
+        take: 5,
+        select: { id: true, name: true, value: true, currency: true, expectedCloseDate: true },
+      }),
+      prisma.task.count({
+        where: {
+          orgId: ctx.org.id,
+          assigneeId: ctx.user.id,
+          status: { notIn: ["COMPLETED", "CANCELLED"] },
+        },
+      }),
+    ]);
+
   const conversion =
     totalLeads > 0 ? Math.round((convertedLeads / totalLeads) * 100) : null;
 
   const kpis = [
     { label: "New leads", value: String(newLeads), hint: "Last 30 days" },
     { label: "Open leads", value: String(openLeads), hint: "Still workable" },
-    { label: "Won leads", value: String(wonLeads), hint: "All time" },
-    { label: "Converted", value: String(convertedLeads), hint: "To contact / company" },
-    { label: "Conversion rate", value: conversion === null ? "—" : `${conversion}%`, hint: "Converted ÷ total" },
-    { label: "Pipeline value", value: "—", hint: "With deals (Phase 3)" },
+    { label: "Open deals", value: String(openDealCount), hint: "In pipeline" },
+    { label: "Open pipeline", value: formatMoney(openDealValue._sum.value), hint: "Sum of open deals" },
+    { label: "Won deals", value: String(wonDealCount), hint: formatMoney(wonDealValue._sum.value) },
+    { label: "Conversion rate", value: conversion === null ? "—" : `${conversion}%`, hint: "Leads converted" },
   ];
 
   const canInvite = can(ctx.role, "members:invite");
@@ -106,11 +142,54 @@ export default async function DashboardPage() {
         ))}
       </section>
       <p className="mt-2 text-xs text-muted-foreground">
-        Deal, pipeline-value and revenue metrics arrive with the Sales and
-        Dotnapps Invoice phases. No placeholder numbers are shown.
+        Revenue metrics arrive with the Dotnapps Invoice phase. No placeholder
+        numbers are shown.
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Deals closing soon</h2>
+            <Link href="/pipeline" className="text-xs font-medium text-primary hover:underline">
+              Open board
+            </Link>
+          </div>
+          {closingSoon.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Nothing due in the next 14 days.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {closingSoon.map((d) => (
+                <li key={d.id} className="flex items-center justify-between text-sm">
+                  <Link href={`/deals/${d.id}`} className="font-medium hover:underline">
+                    {d.name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    {formatMoney(d.value, d.currency)} ·{" "}
+                    {d.expectedCloseDate ? formatDate(d.expectedCloseDate) : "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Your open tasks</h2>
+            <Link href="/tasks?view=my" className="text-xs font-medium text-primary hover:underline">
+              View
+            </Link>
+          </div>
+          <p className="mt-3 text-2xl font-semibold tabular-nums">{myOpenTasks}</p>
+          <p className="text-xs text-muted-foreground">
+            Assigned to you and not yet done
+          </p>
+        </Card>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card className="p-5">
           <h2 className="text-sm font-semibold">Get set up</h2>
           <ul className="mt-3 space-y-2.5">

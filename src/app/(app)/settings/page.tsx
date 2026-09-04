@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { User, Building2, Users, Tags, ChevronRight, Lock } from "lucide-react";
+import { User, Building2, Users, Tags, KanbanSquare, ChevronRight, Lock } from "lucide-react";
 
 import { requireOrgContext } from "@/lib/context";
 import { can } from "@/lib/rbac";
@@ -35,6 +35,13 @@ export default async function SettingsPage() {
       show: can(ctx.role, "members:view"),
     },
     {
+      href: "/settings/pipelines",
+      icon: KanbanSquare,
+      title: "Pipelines & stages",
+      desc: "Deal stages, probabilities, and won/lost mapping.",
+      show: can(ctx.role, "org:manage"),
+    },
+    {
       href: "/settings/tags",
       icon: Tags,
       title: "Tags",
@@ -44,8 +51,6 @@ export default async function SettingsPage() {
   ].filter((s) => s.show);
 
   const later = [
-    "Pipeline settings",
-    "Deal stages",
     "Lead statuses",
     "Lead sources",
     "Custom fields",

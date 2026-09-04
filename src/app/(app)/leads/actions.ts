@@ -11,7 +11,6 @@ import { fieldErrors, formValue, type ActionState } from "@/lib/form";
 import { guard } from "@/lib/crm/guard";
 import {
   leadSchema,
-  noteSchema,
   convertLeadSchema,
   bulkAssignSchema,
   bulkStatusSchema,
@@ -24,6 +23,7 @@ import {
   parseTagNames,
   assertCompanyInOrg,
 } from "@/lib/crm/service";
+import { logActivity, getDefaultPipeline, dealFieldsForStage } from "@/lib/crm/sales";
 
 function leadData(input: ReturnType<typeof leadSchema.parse>) {
   return {
@@ -77,13 +77,12 @@ export async function createLeadAction(
       },
     });
     if (parsed.data.notesText) {
-      await tx.note.create({
-        data: {
-          orgId: ctx.org.id,
-          authorId: ctx.user.id,
-          body: parsed.data.notesText,
-          leadId: created.id,
-        },
+      await logActivity(tx, {
+        orgId: ctx.org.id,
+        type: "NOTE",
+        body: parsed.data.notesText,
+        createdById: ctx.user.id,
+        leadId: created.id,
       });
     }
     return created;
@@ -184,45 +183,6 @@ export async function setLeadArchivedAction(formData: FormData): Promise<void> {
   revalidatePath(`/leads/${id}`);
 }
 
-export async function addLeadNoteAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const g = await guard("leads:edit");
-  if ("error" in g) return g.error;
-  const { ctx } = g;
-
-  const parsed = noteSchema.safeParse({
-    body: formValue(formData, "body"),
-    leadId: formValue(formData, "leadId"),
-  });
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-
-  const lead = await prisma.lead.findFirst({
-    where: { id: parsed.data.leadId, orgId: ctx.org.id },
-    select: { id: true },
-  });
-  if (!lead) return { error: "That lead no longer exists." };
-
-  await prisma.$transaction([
-    prisma.note.create({
-      data: {
-        orgId: ctx.org.id,
-        authorId: ctx.user.id,
-        body: parsed.data.body,
-        leadId: lead.id,
-      },
-    }),
-    prisma.lead.update({
-      where: { id: lead.id },
-      data: { lastActivityAt: new Date() },
-    }),
-  ]);
-
-  revalidatePath(`/leads/${lead.id}`);
-  return { ok: true, message: "Note added." };
-}
-
 export async function convertLeadAction(
   _prev: ActionState,
   formData: FormData,
@@ -243,11 +203,20 @@ export async function convertLeadAction(
 
   let companyId: string | null = null;
   let contactId: string | null = null;
+  let dealId: string | null = null;
 
   try {
     companyId = await assertCompanyInOrg(ctx.org.id, parsed.data.companyId);
   } catch (e) {
     return { error: (e as Error).message };
+  }
+
+  // A deal needs a pipeline with at least one stage.
+  const pipeline = parsed.data.createDeal
+    ? await getDefaultPipeline(ctx.org.id)
+    : null;
+  if (parsed.data.createDeal && (!pipeline || pipeline.stages.length === 0)) {
+    return { error: "Create a pipeline with at least one stage before making deals." };
   }
 
   const tagConnect = lead.tags.map((t) => ({ id: t.id }));
@@ -296,22 +265,52 @@ export async function convertLeadAction(
         });
         contactId = contact.id;
 
-        // Re-home the lead's notes onto the new contact for history.
-        await tx.note.updateMany({
+        // Re-home the lead's activity history onto the new contact.
+        await tx.activity.updateMany({
           where: { leadId: lead.id },
           data: { contactId: contact.id },
+        });
+      }
+
+      if (parsed.data.createDeal && pipeline) {
+        const stage = pipeline.stages[0];
+        const deal = await tx.deal.create({
+          data: {
+            orgId: ctx.org.id,
+            name: lead.companyName ? `${lead.companyName} deal` : `${lead.name} deal`,
+            pipelineId: pipeline.id,
+            stageId: stage.id,
+            ...dealFieldsForStage(stage),
+            companyId,
+            contactId,
+            ownerId: lead.ownerId,
+            source: lead.source,
+            value: lead.estimatedValue,
+            tags: { connect: tagConnect },
+          },
+        });
+        dealId = deal.id;
+        await logActivity(tx, {
+          orgId: ctx.org.id,
+          type: "NOTE",
+          source: "SYSTEM",
+          subject: "Deal created from lead",
+          createdById: ctx.user.id,
+          dealId: deal.id,
         });
       }
 
       await tx.lead.update({
         where: { id: lead.id },
         data: {
-          status: lead.status === "NEW" || lead.status === "CONTACTED"
-            ? "QUALIFIED"
-            : lead.status,
+          status:
+            lead.status === "NEW" || lead.status === "CONTACTED"
+              ? "QUALIFIED"
+              : lead.status,
           convertedAt: new Date(),
           convertedContactId: contactId,
           convertedCompanyId: companyId,
+          convertedDealId: dealId,
           lastActivityAt: new Date(),
         },
       });
@@ -327,10 +326,11 @@ export async function convertLeadAction(
     actorId: ctx.user.id,
     targetType: "Lead",
     targetId: lead.id,
-    metadata: { companyId, contactId },
+    metadata: { companyId, contactId, dealId },
   });
 
   revalidatePath(`/leads/${lead.id}`);
+  if (dealId) redirect(`/deals/${dealId}`);
   if (contactId) redirect(`/contacts/${contactId}`);
   if (companyId) redirect(`/companies/${companyId}`);
   return { ok: true, message: "Lead converted." };

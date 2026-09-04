@@ -9,13 +9,14 @@ import { recordAudit } from "@/lib/audit";
 import { isRedirectError } from "@/lib/next";
 import { fieldErrors, formValue, type ActionState } from "@/lib/form";
 import { guard } from "@/lib/crm/guard";
-import { contactSchema, noteSchema } from "@/lib/crm/validation";
+import { contactSchema } from "@/lib/crm/validation";
 import {
   resolveOwnerId,
   resolveTagIds,
   parseTagNames,
   assertCompanyInOrg,
 } from "@/lib/crm/service";
+import { logActivity } from "@/lib/crm/sales";
 
 export async function createContactAction(
   _prev: ActionState,
@@ -55,13 +56,12 @@ export async function createContactAction(
       },
     });
     if (parsed.data.notesText) {
-      await tx.note.create({
-        data: {
-          orgId: ctx.org.id,
-          authorId: ctx.user.id,
-          body: parsed.data.notesText,
-          contactId: created.id,
-        },
+      await logActivity(tx, {
+        orgId: ctx.org.id,
+        type: "NOTE",
+        body: parsed.data.notesText,
+        createdById: ctx.user.id,
+        contactId: created.id,
       });
     }
     return created;
@@ -164,37 +164,4 @@ export async function setContactArchivedAction(formData: FormData): Promise<void
   });
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${id}`);
-}
-
-export async function addContactNoteAction(
-  _prev: ActionState,
-  formData: FormData,
-): Promise<ActionState> {
-  const g = await guard("contacts:edit");
-  if ("error" in g) return g.error;
-  const { ctx } = g;
-
-  const parsed = noteSchema.safeParse({
-    body: formValue(formData, "body"),
-    contactId: formValue(formData, "contactId"),
-  });
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-
-  const contact = await prisma.contact.findFirst({
-    where: { id: parsed.data.contactId, orgId: ctx.org.id },
-    select: { id: true },
-  });
-  if (!contact) return { error: "That contact no longer exists." };
-
-  await prisma.note.create({
-    data: {
-      orgId: ctx.org.id,
-      authorId: ctx.user.id,
-      body: parsed.data.body,
-      contactId: contact.id,
-    },
-  });
-
-  revalidatePath(`/contacts/${contact.id}`);
-  return { ok: true, message: "Note added." };
 }

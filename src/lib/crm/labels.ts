@@ -1,4 +1,13 @@
-import type { LeadSource, LeadStatus, AddressKind } from "@prisma/client";
+import type {
+  LeadSource,
+  LeadStatus,
+  AddressKind,
+  DealStatus,
+  TaskStatus,
+  TaskPriority,
+  ActivityType,
+  StageKind,
+} from "@prisma/client";
 
 export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
   WEBSITE: "Website",
@@ -66,6 +75,84 @@ export const COMPANY_SIZES = [
   "501-1000",
   "1000+",
 ] as const;
+
+/* --------------------------------------------------------------- Sales ----- */
+
+export const DEAL_STATUS_LABELS: Record<DealStatus, string> = {
+  OPEN: "Open",
+  WON: "Won",
+  LOST: "Lost",
+};
+
+type Tone2 = "neutral" | "brand" | "success" | "warning" | "danger";
+
+export const DEAL_STATUS_TONES: Record<DealStatus, Tone2> = {
+  OPEN: "brand",
+  WON: "success",
+  LOST: "danger",
+};
+
+export const STAGE_KIND_LABELS: Record<StageKind, string> = {
+  OPEN: "Open",
+  WON: "Won",
+  LOST: "Lost",
+};
+
+export const STAGE_KINDS = Object.keys(STAGE_KIND_LABELS) as StageKind[];
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  TODO: "To do",
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+};
+
+export const TASK_STATUSES = Object.keys(TASK_STATUS_LABELS) as TaskStatus[];
+
+export const TASK_STATUS_TONES: Record<TaskStatus, Tone2> = {
+  TODO: "neutral",
+  IN_PROGRESS: "brand",
+  COMPLETED: "success",
+  CANCELLED: "danger",
+};
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  URGENT: "Urgent",
+};
+
+export const TASK_PRIORITIES = Object.keys(TASK_PRIORITY_LABELS) as TaskPriority[];
+
+export const TASK_PRIORITY_TONES: Record<TaskPriority, Tone2> = {
+  LOW: "neutral",
+  MEDIUM: "neutral",
+  HIGH: "warning",
+  URGENT: "danger",
+};
+
+export const ACTIVITY_TYPE_LABELS: Record<ActivityType, string> = {
+  CALL: "Call",
+  MEETING: "Meeting",
+  EMAIL: "Email",
+  WHATSAPP: "WhatsApp",
+  FOLLOW_UP: "Follow-up",
+  DEMO: "Demo",
+  NOTE: "Note",
+  TASK: "Task",
+};
+
+/** Types a user can log by hand (TASK activities are system-generated). */
+export const LOGGABLE_ACTIVITY_TYPES: ActivityType[] = [
+  "NOTE",
+  "CALL",
+  "MEETING",
+  "EMAIL",
+  "WHATSAPP",
+  "FOLLOW_UP",
+  "DEMO",
+];
 
 export const DEFAULT_TAGS: { name: string; color: string }[] = [
   { name: "VIP", color: "#7c3aed" },

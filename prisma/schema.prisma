@@ -42,7 +42,12 @@ model User {
   ownedLeads     Lead[]    @relation("LeadOwner")
   ownedContacts  Contact[] @relation("ContactOwner")
   ownedCompanies Company[] @relation("CompanyOwner")
-  authoredNotes  Note[]    @relation("NoteAuthor")
+
+  // Sales (Phase 3)
+  ownedDeals    Deal[]     @relation("DealOwner")
+  assignedTasks Task[]     @relation("TaskAssignee")
+  createdTasks  Task[]     @relation("TaskCreatedBy")
+  activities    Activity[] @relation("ActivityCreatedBy")
 
   @@index([email])
 }
@@ -70,7 +75,13 @@ model Organization {
   companies Company[]
   addresses Address[]
   tags      Tag[]
-  notes     Note[]
+
+  // Sales (Phase 3)
+  pipelines      Pipeline[]
+  pipelineStages PipelineStage[]
+  deals          Deal[]
+  tasks          Task[]
+  activities     Activity[]
 
   @@index([slug])
 }
@@ -212,7 +223,9 @@ model Company {
   owner              User?        @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   contacts           Contact[]
   addresses          Address[]
-  noteItems          Note[]
+  deals              Deal[]
+  tasks              Task[]
+  activities         Activity[]
   tags               Tag[]        @relation("CompanyTags")
   convertedFromLeads Lead[]       @relation("LeadConvertedCompany")
 
@@ -261,7 +274,9 @@ model Contact {
   org                Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   company            Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   owner              User?        @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  noteItems          Note[]
+  deals              Deal[]
+  tasks              Task[]
+  activities         Activity[]
   tags               Tag[]        @relation("ContactTags")
   convertedFromLeads Lead[]       @relation("LeadConvertedContact")
 
@@ -293,6 +308,7 @@ model Lead {
   convertedAt        DateTime?
   convertedContactId String?
   convertedCompanyId String?
+  convertedDealId    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -301,7 +317,9 @@ model Lead {
   owner            User?        @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
   convertedContact Contact?     @relation("LeadConvertedContact", fields: [convertedContactId], references: [id], onDelete: SetNull)
   convertedCompany Company?     @relation("LeadConvertedCompany", fields: [convertedCompanyId], references: [id], onDelete: SetNull)
-  noteItems        Note[]
+  convertedDeal    Deal?        @relation("LeadConvertedDeal", fields: [convertedDealId], references: [id], onDelete: SetNull)
+  tasks            Task[]
+  activities       Activity[]
   tags             Tag[]        @relation("LeadTags")
 
   @@index([orgId, archived])
@@ -321,37 +339,206 @@ model Tag {
   leads     Lead[]       @relation("LeadTags")
   contacts  Contact[]    @relation("ContactTags")
   companies Company[]    @relation("CompanyTags")
+  deals     Deal[]       @relation("DealTags")
 
   @@unique([orgId, name])
   @@index([orgId])
 }
 
-model Note {
+// ---------------------------------------------------------------------------
+// Sales Pipeline (Phase 3): Pipeline, PipelineStage, Deal, Task, Activity.
+//   - Activity is the single timeline primitive. A NOTE-type activity with
+//     source MANUAL is a hand-written note; SYSTEM activities record stage
+//     changes, task completions, conversions, etc.
+//   - Deal.status is denormalised from its stage's kind for fast filtering.
+// ---------------------------------------------------------------------------
+
+enum StageKind {
+  OPEN
+  WON
+  LOST
+}
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ActivityType {
+  CALL
+  MEETING
+  EMAIL
+  WHATSAPP
+  FOLLOW_UP
+  DEMO
+  NOTE
+  TASK
+}
+
+enum ActivitySource {
+  MANUAL
+  SYSTEM
+}
+
+model Pipeline {
   id        String   @id @default(cuid())
   orgId     String
-  authorId  String?
-  body      String   @db.Text
-  leadId    String?
-  contactId String?
-  companyId String?
+  name      String
+  isDefault Boolean  @default(false)
+  position  Int      @default(0)
+  archived  Boolean  @default(false)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  author  User?        @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  lead    Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  contact Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  company Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  org    Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  stages PipelineStage[]
+  deals  Deal[]
 
-  @@index([orgId, createdAt])
+  @@index([orgId, archived])
+}
+
+model PipelineStage {
+  id          String    @id @default(cuid())
+  orgId       String
+  pipelineId  String
+  name        String
+  position    Int
+  probability Int       @default(0)
+  kind        StageKind @default(OPEN)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pipeline Pipeline     @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals    Deal[]
+
+  @@index([pipelineId, position])
+  @@index([orgId])
+}
+
+model Deal {
+  id                String      @id @default(cuid())
+  orgId             String
+  name              String
+  pipelineId        String
+  stageId           String
+  status            DealStatus  @default(OPEN)
+  companyId         String?
+  contactId         String?
+  ownerId           String?
+  value             Decimal?    @db.Decimal(14, 2)
+  currency          String      @default("USD")
+  probability       Int?
+  source            LeadSource?
+  expectedCloseDate DateTime?
+  closedAt          DateTime?
+  winReason         String?
+  lossReason        String?
+  archived          Boolean     @default(false)
+  lastActivityAt    DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  org        Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage      PipelineStage @relation(fields: [stageId], references: [id])
+  company    Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  contact    Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  owner      User?         @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  tasks      Task[]
+  activities Activity[]
+  tags       Tag[]         @relation("DealTags")
+  fromLeads  Lead[]        @relation("LeadConvertedDeal")
+
+  @@index([orgId, archived])
+  @@index([orgId, status])
+  @@index([orgId, ownerId])
+  @@index([pipelineId, stageId])
+  @@index([orgId, expectedCloseDate])
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  orgId       String
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  dueAt       DateTime?
+  completedAt DateTime?
+  assigneeId  String?
+  createdById String?
+  leadId      String?
+  contactId   String?
+  companyId   String?
+  dealId      String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  assignee  User?        @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User?        @relation("TaskCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lead      Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact   Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company   Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal      Deal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, status])
+  @@index([orgId, assigneeId, status])
+  @@index([orgId, dueAt])
+  @@index([dealId])
   @@index([leadId])
   @@index([contactId])
   @@index([companyId])
 }
 
+model Activity {
+  id          String         @id @default(cuid())
+  orgId       String
+  type        ActivityType
+  source      ActivitySource @default(MANUAL)
+  subject     String?
+  body        String?        @db.Text
+  occurredAt  DateTime       @default(now())
+  createdById String?
+  leadId      String?
+  contactId   String?
+  companyId   String?
+  dealId      String?
+  createdAt   DateTime       @default(now())
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation("ActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  lead      Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contact   Contact?     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  company   Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  deal      Deal?        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, occurredAt])
+  @@index([dealId, occurredAt])
+  @@index([leadId, occurredAt])
+  @@index([contactId, occurredAt])
+  @@index([companyId, occurredAt])
+}
+
 // ---------------------------------------------------------------------------
 // Later phases attach here:
-//   Deal, Pipeline, PipelineStage, Task, Activity, CustomField,
-//   CustomFieldValue, QuotationLink, InvoiceLink, PaymentEvent, Notification,
-//   ReminderRule, ReminderExecution, ImportJob, ImportRowError,
+//   CustomField, CustomFieldValue, QuotationLink, InvoiceLink, PaymentEvent,
+//   Notification, ReminderRule, ReminderExecution, ImportJob, ImportRowError,
 //   SubscriptionPlan, Subscription, UsageRecord, Integration.
 // ---------------------------------------------------------------------------

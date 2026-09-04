@@ -3,11 +3,12 @@
 Turn leads into customers. Customers into revenue.
 
 A modern, multi-tenant CRM. This repository currently contains **Phase 1 —
-Foundation** and **Phase 2 — CRM Core** from the product specification:
-authentication, organizations and tenant isolation, server-side RBAC, an audit
-log, the app shell, plus Leads, Contacts, Companies, Customer-360 detail views,
-tags, notes, search, filtering, bulk actions, CSV import-ready export, and lead
-conversion.
+Foundation**, **Phase 2 — CRM Core**, and **Phase 3 — Sales Pipeline** from the
+product specification: authentication, organizations and tenant isolation,
+server-side RBAC, an audit log, the app shell, Leads / Contacts / Companies with
+Customer-360 detail views, tags, search, filtering, bulk actions, CSV export and
+lead conversion, plus Deals, configurable Pipelines, a drag-and-drop Kanban
+board, Tasks, and a unified Activity timeline.
 
 > **No AI in V1.** The architecture is kept modular so AI features can be added
 > in V2, but none are present.
@@ -81,6 +82,39 @@ conversion.
   place to add it is each module's `query.ts` where-builder.
 - CSV **import** (mapping / validation / preview wizard) is still to come; export
   is done.
+
+## What's implemented (Phase 3 — Sales Pipeline)
+
+- **Deals** (`/deals`): list with search + pipeline/stage/status/owner/tag/
+  archived filters, pagination; create/edit; detail view; archive; CSV export.
+- **Pipelines & stages** (`/settings/pipelines`, `org:manage`): multiple
+  pipelines, one default; add / rename / reorder / delete stages with
+  probability and an `OPEN` / `WON` / `LOST` kind. Deleting a stage moves its
+  deals to a sibling. New pipelines seed a sensible default stage set.
+- **Kanban board** (`/pipeline`): columns per stage, HTML5 drag-and-drop to
+  change stage (optimistic), a per-card stage `<select>` fallback on mobile,
+  owner/tag/pipeline filters. Every move writes a system Activity + audit entry.
+- **Deal lifecycle**: moving to a stage applies its probability; `WON`/`LOST`
+  stages (or the explicit **Mark won / Mark lost** action with a reason) set
+  `status`, `closedAt`, and the win/loss reason.
+- **Tasks** (`/tasks`): All / My tasks / Overdue views; status/priority/assignee
+  filters; inline status toggle and edit; create standalone or from a deal.
+  Tasks relate to a Lead, Contact, Company or Deal. Completing a deal task logs
+  a timeline Activity.
+- **Activity timeline**: `Activity` is now the single timeline primitive
+  (Phase 2 `Note` rows were migrated into it). Manual entries (`NOTE`, `CALL`,
+  `MEETING`, `EMAIL`, `WHATSAPP`, `FOLLOW_UP`, `DEMO`) are visually distinct
+  from `SYSTEM` ones (stage changes, task completions, conversions). Shown on
+  every Lead / Contact / Company / Deal, and globally at `/activities`.
+- **Lead conversion** now also opens a Deal in the default pipeline (optional).
+- **Dashboard**: real open-deal count, open-pipeline value, won count/value,
+  "deals closing soon" (next 14 days), and your open-task count.
+
+### Sales notes
+
+- `Deal.status` and `Deal.probability` are denormalised from the deal's stage
+  for fast filtering; the stage remains the source of truth.
+- Board drag-and-drop uses native HTML5 DnD (no external library).
 
 ## Local setup
 
@@ -157,8 +191,12 @@ src/app/(auth)/             login, signup
 src/app/onboarding/         create business, accept invites
 src/app/(app)/              authenticated shell
   leads/ contacts/ companies/   list + [id] + [id]/edit + new + export route + actions
+  deals/                        list + [id] + [id]/edit + new + export + actions
+  pipeline/                     Kanban board
+  tasks/ activities/            task views + global activity feed
   search/                       global search
-  settings/                     profile, organization, team, tags
+  settings/                     profile, organization, team, tags, pipelines
+src/lib/crm/                sales.ts (pipeline/activity helpers) + labels/query/csv/service/guard
 src/app/admin/              Super Admin (separate layout + guard)
 ```
 
@@ -166,10 +204,10 @@ src/app/admin/              Super Admin (separate layout + guard)
 
 - `package.json#prisma` (the `seed` hook) is deprecated in favour of
   `prisma.config.ts` in Prisma 7 — migrate before upgrading.
-- **Phase 3 (Sales Pipeline: Deal, Pipeline, PipelineStage, Task, Activity)**
-  attaches to the models block reserved at the bottom of `schema.prisma`. Notes
-  become the first-class activity timeline.
-- Still open in CRM Core: CSV **import** wizard, custom fields, per-user record
-  visibility scoping.
+- **Phase 4 (Dotnapps Invoice Revenue Integration: QuotationLink, InvoiceLink,
+  PaymentEvent)** attaches to the models block reserved at the bottom of
+  `schema.prisma`.
+- Still open in CRM Core / Sales: CSV **import** wizard, custom fields, per-user
+  record visibility scoping, multi-currency roll-ups.
 - Email delivery, subscription/billing, and the Dotnapps Invoice integration are
   later phases; honest placeholder states for them are already in the UI.

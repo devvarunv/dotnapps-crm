@@ -1,5 +1,13 @@
 import { z } from "zod";
-import { LEAD_SOURCES, LEAD_STATUSES, ADDRESS_KINDS } from "./labels";
+import {
+  LEAD_SOURCES,
+  LEAD_STATUSES,
+  ADDRESS_KINDS,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+  STAGE_KINDS,
+  LOGGABLE_ACTIVITY_TYPES,
+} from "./labels";
 
 const trimmed = (max: number) => z.string().trim().max(max);
 const optional = (max: number) =>
@@ -35,6 +43,13 @@ const dateOnly = z
   .optional()
   .transform((v) => (v ? v : undefined))
   .refine((v) => v === undefined || !Number.isNaN(Date.parse(v)), "Invalid date");
+
+const dateTimeLocal = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v ? v : undefined))
+  .refine((v) => v === undefined || !Number.isNaN(Date.parse(v)), "Invalid date/time");
 
 export const leadSchema = z.object({
   name: trimmed(160).min(2, "Enter a name"),
@@ -94,12 +109,6 @@ export const addressSchema = z.object({
   country: optional(120),
 });
 
-export const noteSchema = z.object({
-  body: trimmed(4000).min(1, "Write something first"),
-  leadId: optional(40),
-  contactId: optional(40),
-  companyId: optional(40),
-});
 
 export const tagSchema = z.object({
   name: trimmed(40).min(1, "Enter a tag name"),
@@ -142,4 +151,103 @@ export const convertLeadSchema = z.object({
     .optional()
     .transform((v) => v === "on" || v === "true"),
   contactId: optional(40),
+  createDeal: z
+    .string()
+    .optional()
+    .transform((v) => v === "on" || v === "true"),
+});
+
+/* --------------------------------------------------------------- Sales ----- */
+
+const checkbox = z
+  .string()
+  .optional()
+  .transform((v) => v === "on" || v === "true");
+
+export const dealSchema = z.object({
+  name: trimmed(160).min(2, "Enter a deal name"),
+  pipelineId: z.string().min(1, "Pick a pipeline"),
+  stageId: z.string().min(1, "Pick a stage"),
+  companyId: optional(40),
+  contactId: optional(40),
+  ownerId: optional(40),
+  value: money,
+  currency: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v.toUpperCase().slice(0, 3) : "USD")),
+  source: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v : undefined))
+    .refine(
+      (v) => v === undefined || (LEAD_SOURCES as string[]).includes(v),
+      "Invalid source",
+    ),
+  expectedCloseDate: dateOnly,
+  notesText: optional(4000),
+});
+
+export const changeStageSchema = z.object({
+  dealId: z.string().min(1),
+  stageId: z.string().min(1),
+});
+
+export const winLoseSchema = z.object({
+  dealId: z.string().min(1),
+  outcome: z.enum(["WON", "LOST"]),
+  reason: optional(500),
+});
+
+export const taskSchema = z.object({
+  title: trimmed(200).min(2, "Enter a title"),
+  description: optional(4000),
+  status: z.enum(TASK_STATUSES as [string, ...string[]]).default("TODO"),
+  priority: z.enum(TASK_PRIORITIES as [string, ...string[]]).default("MEDIUM"),
+  dueAt: dateTimeLocal,
+  assigneeId: optional(40),
+  leadId: optional(40),
+  contactId: optional(40),
+  companyId: optional(40),
+  dealId: optional(40),
+});
+
+export const taskStatusSchema = z.object({
+  taskId: z.string().min(1),
+  status: z.enum(TASK_STATUSES as [string, ...string[]]),
+});
+
+export const activitySchema = z.object({
+  type: z.enum(LOGGABLE_ACTIVITY_TYPES as [string, ...string[]]),
+  subject: optional(200),
+  body: trimmed(6000).min(1, "Write something first"),
+  occurredAt: dateTimeLocal,
+  leadId: optional(40),
+  contactId: optional(40),
+  companyId: optional(40),
+  dealId: optional(40),
+});
+
+export const pipelineSchema = z.object({
+  name: trimmed(120).min(2, "Enter a pipeline name"),
+  isDefault: checkbox,
+});
+
+export const stageSchema = z.object({
+  pipelineId: z.string().min(1),
+  name: trimmed(80).min(1, "Enter a stage name"),
+  probability: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? parseInt(v, 10) : 0))
+    .refine((v) => v >= 0 && v <= 100, "0–100"),
+  kind: z.enum(STAGE_KINDS as [string, ...string[]]).default("OPEN"),
+});
+
+export const reorderStageSchema = z.object({
+  stageId: z.string().min(1),
+  direction: z.enum(["up", "down"]),
 });
