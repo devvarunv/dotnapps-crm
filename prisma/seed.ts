@@ -400,6 +400,57 @@ async function main() {
     console.log("Seeded Dotnapps Invoice integration (MOCK), 4 quotations, 2 invoices, 2 payments.");
   }
 
+  // --- Automation sample rules (Phase 5) ------------------------------
+  const ruleCount = await prisma.reminderRule.count({ where: { orgId: org.id } });
+  if (ruleCount === 0) {
+    await prisma.reminderRule.createMany({
+      data: [
+        {
+          orgId: org.id,
+          name: "Chase leads with no follow-up",
+          trigger: "LEAD_CREATED_NO_FOLLOWUP",
+          action: "CREATE_TASK",
+          config: { delayMinutes: 0, taskTitle: "Follow up with new lead", taskPriority: "MEDIUM" },
+          createdById: owner.id,
+        },
+        {
+          orgId: org.id,
+          name: "Nudge overdue tasks",
+          trigger: "TASK_OVERDUE",
+          action: "NOTIFY_ASSIGNEE",
+          config: {},
+          createdById: owner.id,
+        },
+        {
+          orgId: org.id,
+          name: "Deal close date reminder",
+          trigger: "DEAL_CLOSE_APPROACHING",
+          action: "NOTIFY_OWNER",
+          config: { withinDays: 14 },
+          createdById: owner.id,
+        },
+        {
+          orgId: org.id,
+          name: "Plan next step on stage change",
+          trigger: "DEAL_STAGE_CHANGED",
+          action: "CREATE_TASK",
+          config: { taskTitle: "Plan next step", taskPriority: "MEDIUM" },
+          createdById: owner.id,
+        },
+        {
+          orgId: org.id,
+          name: "Chase unanswered quotations",
+          trigger: "QUOTATION_SENT_NO_RESPONSE",
+          action: "CREATE_TASK",
+          enabled: false,
+          config: { delayMinutes: 4320, taskTitle: "Chase quotation response", taskPriority: "HIGH" },
+          createdById: owner.id,
+        },
+      ],
+    });
+    console.log("Seeded 5 automation rules (4 enabled).");
+  }
+
   console.log("\nSeed complete. All accounts use password:", DEMO_PASSWORD);
   console.table([
     { email: superAdmin.email, role: "SUPER ADMIN (platform)" },

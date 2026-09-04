@@ -71,4 +71,11 @@ export const AUDIT_LABELS: Record<string, string> = {
   "integration.invoice.updated": "Invoice updated",
   "integration.invoice.paid": "Invoice paid",
   "integration.payment.recorded": "Payment recorded",
+
+  "automation.run": "Automation run",
+  "automation.rule.create": "Automation rule created",
+  "automation.rule.update": "Automation rule updated",
+  "automation.rule.enable": "Automation rule enabled",
+  "automation.rule.disable": "Automation rule disabled",
+  "automation.rule.delete": "Automation rule deleted",
 };

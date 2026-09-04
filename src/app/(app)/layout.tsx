@@ -1,4 +1,5 @@
 import { requireOrgContext } from "@/lib/context";
+import { prisma } from "@/lib/db";
 import { Sidebar, type SidebarOrg } from "@/components/app/sidebar";
 
 export default async function AppLayout({
@@ -14,6 +15,10 @@ export default async function AppLayout({
     role: m.role,
   }));
 
+  const unreadNotifications = await prisma.notification.count({
+    where: { userId: ctx.user.id, orgId: ctx.org.id, readAt: null },
+  });
+
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
       <Sidebar
@@ -22,6 +27,7 @@ export default async function AppLayout({
         orgs={orgs}
         user={{ name: ctx.user.name, email: ctx.user.email }}
         isSuperAdmin={ctx.user.isSuperAdmin}
+        unreadNotifications={unreadNotifications}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">

@@ -150,6 +150,16 @@ async function maybeAdvanceStage(orgId: string, dealId: string) {
       dealId: deal.id,
     });
   });
+
+  const { onDealStageChanged } = await import("@/lib/automation/engine");
+  await onDealStageChanged({
+    orgId,
+    dealId: deal.id,
+    dealName: deal.name,
+    toStageId: next.id,
+    toStageName: next.name,
+    ownerId: deal.ownerId,
+  });
 }
 
 /**

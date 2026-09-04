@@ -24,6 +24,7 @@ import {
   assertCompanyInOrg,
 } from "@/lib/crm/service";
 import { logActivity, getDefaultPipeline, dealFieldsForStage } from "@/lib/crm/sales";
+import { notifyAssignment, notify } from "@/lib/automation/notify";
 
 function leadData(input: ReturnType<typeof leadSchema.parse>) {
   return {
@@ -96,6 +97,15 @@ export async function createLeadAction(
     targetId: lead.id,
     metadata: { name: lead.name },
   });
+  await notifyAssignment({
+    orgId: ctx.org.id,
+    assigneeId: ownerId,
+    actorId: ctx.user.id,
+    title: `Lead assigned to you: ${lead.name}`,
+    url: `/leads/${lead.id}`,
+    entityType: "Lead",
+    entityId: lead.id,
+  });
 
   revalidatePath("/leads");
   redirect(`/leads/${lead.id}`);
@@ -150,6 +160,17 @@ export async function updateLeadAction(
     targetType: "Lead",
     targetId: id,
   });
+  if (ownerId && ownerId !== existing.ownerId) {
+    await notifyAssignment({
+      orgId: ctx.org.id,
+      assigneeId: ownerId,
+      actorId: ctx.user.id,
+      title: `Lead assigned to you: ${parsed.data.name}`,
+      url: `/leads/${id}`,
+      entityType: "Lead",
+      entityId: id,
+    });
+  }
 
   revalidatePath(`/leads/${id}`);
   revalidatePath("/leads");
@@ -365,6 +386,15 @@ export async function bulkAssignLeadsAction(
     actorId: ctx.user.id,
     metadata: { count, ownerId },
   });
+  if (ownerId && ownerId !== ctx.user.id && count > 0) {
+    await notify({
+      orgId: ctx.org.id,
+      userId: ownerId,
+      type: "ASSIGNMENT",
+      title: `${count} lead${count === 1 ? "" : "s"} assigned to you`,
+      url: "/leads?owner=" + ownerId,
+    });
+  }
 
   revalidatePath("/leads");
   return { ok: true, message: `${count} lead${count === 1 ? "" : "s"} reassigned.` };

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { User, Building2, Users, Tags, KanbanSquare, Plug, ChevronRight, Lock } from "lucide-react";
+import { User, Building2, Users, Tags, KanbanSquare, Plug, Zap, Bell, ChevronRight, Lock } from "lucide-react";
 
 import { requireOrgContext } from "@/lib/context";
 import { can } from "@/lib/rbac";
@@ -54,6 +54,20 @@ export default async function SettingsPage() {
       title: "Integrations",
       desc: "Connect Dotnapps Invoice for quotations, invoices and payments.",
       show: can(ctx.role, "integration:manage"),
+    },
+    {
+      href: "/settings/automation",
+      icon: Zap,
+      title: "Follow-up automation",
+      desc: "Rule-based reminders and follow-up tasks. No AI.",
+      show: can(ctx.role, "org:manage"),
+    },
+    {
+      href: "/settings/notifications",
+      icon: Bell,
+      title: "Notification preferences",
+      desc: "Choose what you're notified about.",
+      show: true,
     },
   ].filter((s) => s.show);
 

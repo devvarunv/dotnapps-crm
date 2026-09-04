@@ -10,6 +10,7 @@ import { guard } from "@/lib/crm/guard";
 import { taskSchema, taskStatusSchema } from "@/lib/crm/validation";
 import { resolveOwnerId, assertCompanyInOrg } from "@/lib/crm/service";
 import { logActivity } from "@/lib/crm/sales";
+import { notifyAssignment } from "@/lib/automation/notify";
 
 const PARENTS = ["leadId", "contactId", "companyId", "dealId"] as const;
 
@@ -91,6 +92,15 @@ export async function createTaskAction(
     targetId: task.id,
     metadata: { title: task.title },
   });
+  await notifyAssignment({
+    orgId: ctx.org.id,
+    assigneeId,
+    actorId: ctx.user.id,
+    title: `New task: ${task.title}`,
+    url: "/tasks",
+    entityType: "Task",
+    entityId: task.id,
+  });
 
   revalidateParent(parents);
   return { ok: true, message: "Task created." };
@@ -156,6 +166,17 @@ export async function updateTaskAction(
     targetType: "Task",
     targetId: id,
   });
+  if (assigneeId && assigneeId !== existing.assigneeId) {
+    await notifyAssignment({
+      orgId: ctx.org.id,
+      assigneeId,
+      actorId: ctx.user.id,
+      title: `Task assigned to you: ${d.title}`,
+      url: "/tasks",
+      entityType: "Task",
+      entityId: id,
+    });
+  }
 
   revalidateParent({
     leadId: existing.leadId,

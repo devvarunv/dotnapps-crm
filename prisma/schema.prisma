@@ -49,6 +49,11 @@ model User {
   createdTasks  Task[]     @relation("TaskCreatedBy")
   activities    Activity[] @relation("ActivityCreatedBy")
 
+  // Automation & notifications (Phase 5)
+  createdRules      ReminderRule[]           @relation("RuleCreatedBy")
+  notifications     Notification[]           @relation("UserNotifications")
+  notificationPrefs NotificationPreference[] @relation("UserNotificationPrefs")
+
   @@index([email])
 }
 
@@ -89,6 +94,12 @@ model Organization {
   invoiceLinks      InvoiceLink[]
   paymentEvents     PaymentEvent[]
   integrationEvents IntegrationEvent[]
+
+  // Automation & notifications (Phase 5)
+  reminderRules           ReminderRule[]
+  reminderExecutions      ReminderExecution[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
 
   @@index([slug])
 }
@@ -731,8 +742,120 @@ model IntegrationEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Rule-based automation (Phase 5) — NO AI. Explicit condition/action rules.
+//   - Every fired rule writes a ReminderExecution; a unique (ruleId,dedupeKey)
+//     makes re-runs idempotent.
+//   - Actions produce Tasks and/or Notifications. Failures are retryable.
+// ---------------------------------------------------------------------------
+
+enum RuleTrigger {
+  LEAD_CREATED_NO_FOLLOWUP
+  QUOTATION_SENT_NO_RESPONSE
+  DEAL_CLOSE_APPROACHING
+  TASK_OVERDUE
+  DEAL_STAGE_CHANGED
+}
+
+enum RuleAction {
+  CREATE_TASK
+  NOTIFY_OWNER
+  NOTIFY_ASSIGNEE
+  NOTIFY_MANAGERS
+}
+
+enum ExecutionStatus {
+  DONE
+  FAILED
+  SKIPPED
+}
+
+model ReminderRule {
+  id          String      @id @default(cuid())
+  orgId       String
+  name        String
+  trigger     RuleTrigger
+  action      RuleAction
+  enabled     Boolean     @default(true)
+  // { delayMinutes?, withinDays?, taskTitle?, taskPriority?, assignTo?,
+  //   notifyManagers? } — validated in application code.
+  config      Json        @default("{}")
+  createdById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  org        Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy  User?               @relation("RuleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  executions ReminderExecution[]
+
+  @@index([orgId, enabled])
+}
+
+model ReminderExecution {
+  id           String          @id @default(cuid())
+  orgId        String
+  ruleId       String
+  dedupeKey    String
+  status       ExecutionStatus
+  targetType   String?
+  targetId     String?
+  error        String?
+  resultTaskId String?
+  createdAt    DateTime        @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  rule ReminderRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, dedupeKey])
+  @@index([orgId, createdAt])
+  @@index([status])
+}
+
+enum NotificationType {
+  ASSIGNMENT
+  MENTION
+  TASK_OVERDUE
+  STAGE_CHANGE
+  CLOSE_APPROACHING
+  AUTOMATION_FOLLOWUP
+  GENERIC
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  orgId      String
+  userId     String
+  type       NotificationType
+  title      String
+  body       String?
+  entityType String?
+  entityId   String?
+  url        String?
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([orgId, createdAt])
+}
+
+model NotificationPreference {
+  id           String             @id @default(cuid())
+  orgId        String
+  userId       String
+  emailEnabled Boolean            @default(false)
+  mutedTypes   NotificationType[] @default([])
+  updatedAt    DateTime           @updatedAt
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation("UserNotificationPrefs", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+}
+
+// ---------------------------------------------------------------------------
 // Later phases attach here:
-//   CustomField, CustomFieldValue, Notification, ReminderRule,
-//   ReminderExecution, ImportJob, ImportRowError, SubscriptionPlan,
-//   Subscription, UsageRecord.
+//   CustomField, CustomFieldValue, ImportJob, ImportRowError,
+//   SubscriptionPlan, Subscription, UsageRecord.
 // ---------------------------------------------------------------------------

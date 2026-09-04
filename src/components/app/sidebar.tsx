@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, ChevronsUpDown, LogOut, Shield, Check } from "lucide-react";
+import { Menu, X, ChevronsUpDown, LogOut, Shield, Check, Bell } from "lucide-react";
 import type { Role } from "@prisma/client";
 
 import { cn, initials } from "@/lib/utils";
@@ -22,19 +22,42 @@ export function Sidebar({
   orgs,
   user,
   isSuperAdmin,
+  unreadNotifications = 0,
 }: {
   role: Role;
   activeOrgId: string;
   orgs: SidebarOrg[];
   user: SidebarUser;
   isSuperAdmin: boolean;
+  unreadNotifications?: number;
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
+  const notifActive = pathname === "/notifications";
 
   const nav = (
     <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4 dnc-scroll">
+      <div className="space-y-1">
+        <Link
+          href="/notifications"
+          onClick={() => setOpen(false)}
+          className={cn(
+            "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+            notifActive
+              ? "bg-primary/10 font-medium text-primary"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          <Bell className="size-4 shrink-0" />
+          <span className="flex-1">Notifications</span>
+          {unreadNotifications > 0 && (
+            <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+              {unreadNotifications > 99 ? "99+" : unreadNotifications}
+            </span>
+          )}
+        </Link>
+      </div>
       {NAV.map((group, gi) => {
         const items = group.items.filter((i) => can(role, i.permission));
         if (items.length === 0) return null;

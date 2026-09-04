@@ -21,6 +21,8 @@ import {
   assertCompanyInOrg,
 } from "@/lib/crm/service";
 import { dealFieldsForStage, logActivity } from "@/lib/crm/sales";
+import { notifyAssignment } from "@/lib/automation/notify";
+import { onDealStageChanged } from "@/lib/automation/engine";
 
 async function loadStage(orgId: string, pipelineId: string, stageId: string) {
   return prisma.pipelineStage.findFirst({
@@ -108,6 +110,15 @@ export async function createDealAction(
     targetType: "Deal",
     targetId: deal.id,
     metadata: { name: deal.name },
+  });
+  await notifyAssignment({
+    orgId: ctx.org.id,
+    assigneeId: ownerId,
+    actorId: ctx.user.id,
+    title: `Deal assigned to you: ${deal.name}`,
+    url: `/deals/${deal.id}`,
+    entityType: "Deal",
+    entityId: deal.id,
   });
 
   revalidatePath("/deals");
@@ -200,6 +211,27 @@ export async function updateDealAction(
     targetType: "Deal",
     targetId: id,
   });
+  if (ownerId && ownerId !== existing.ownerId) {
+    await notifyAssignment({
+      orgId: ctx.org.id,
+      assigneeId: ownerId,
+      actorId: ctx.user.id,
+      title: `Deal assigned to you: ${d.name}`,
+      url: `/deals/${id}`,
+      entityType: "Deal",
+      entityId: id,
+    });
+  }
+  if (stageChanged) {
+    await onDealStageChanged({
+      orgId: ctx.org.id,
+      dealId: id,
+      dealName: d.name,
+      toStageId: stage.id,
+      toStageName: stage.name,
+      ownerId: ownerId ?? existing.ownerId,
+    });
+  }
 
   revalidatePath(`/deals/${id}`);
   revalidatePath("/deals");
@@ -249,6 +281,14 @@ export async function changeDealStageAction(
     targetType: "Deal",
     targetId: deal.id,
     metadata: { from: deal.stage.name, to: stage.name },
+  });
+  await onDealStageChanged({
+    orgId: ctx.org.id,
+    dealId: deal.id,
+    dealName: deal.name,
+    toStageId: stage.id,
+    toStageName: stage.name,
+    ownerId: deal.ownerId,
   });
 
   revalidatePath("/pipeline");

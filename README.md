@@ -2,13 +2,14 @@
 
 Turn leads into customers. Customers into revenue.
 
-A modern, multi-tenant CRM. This repository currently contains **Phases 1–4**
+A modern, multi-tenant CRM. This repository currently contains **Phases 1–5**
 from the product specification: Foundation (auth, tenancy, RBAC, audit),
 CRM Core (Leads / Contacts / Companies, tags, search, bulk actions, conversion),
 Sales Pipeline (Deals, configurable pipelines, a drag-and-drop Kanban board,
-Tasks, a unified Activity timeline), and the **Dotnapps Invoice revenue
+Tasks, a unified Activity timeline), the **Dotnapps Invoice revenue
 integration** (quotations, invoices, payments via a configurable provider with
-signed webhooks, plus a labelled sandbox mode).
+signed webhooks, plus a labelled sandbox mode), and **rule-based follow-up
+automation** with in-app notifications — explicit condition/action rules, no AI.
 
 > **No AI in V1.** The architecture is kept modular so AI features can be added
 > in V2, but none are present.
@@ -156,6 +157,39 @@ financial source of truth**. The CRM only mirrors provider values into
   DTOs a real provider would; swapping in a real Dotnapps Invoice account is a
   base-URL + API-key change plus pointing its webhooks at the endpoint above.
 
+## What's implemented (Phase 5 — rule-based follow-up automation, no AI)
+
+Explicit `when → do` rules only. No AI, no hidden heuristics.
+
+- **`/settings/automation`** (`org:manage`): create / edit / enable / disable /
+  delete rules and **Run automation now**. Triggers: new lead with no
+  follow-up, quotation sent with no response, deal close date approaching,
+  task overdue, deal stage changed. Actions: create a follow-up task, notify
+  the owner / assignee / managers. Config: delay, window, task title +
+  priority.
+- **Engine** (`src/lib/automation/engine.ts`): every fired rule writes a
+  `ReminderExecution`; a `@@unique(ruleId, dedupeKey)` makes the runner
+  **idempotent** (re-running does nothing). Failures are stored with the error
+  and are **retryable** from the executions log. `DEAL_STAGE_CHANGED` is
+  event-driven (hooked into the stage-change actions + the webhook
+  auto-advance); the rest are evaluated by the poll.
+- **Scheduler endpoint**: `POST /api/automation/run` with
+  `Authorization: Bearer $AUTOMATION_SECRET` (optionally `?org=<id>`). Point a
+  cron job at it; unauthorized calls get 401.
+- **Notifications** (`src/lib/automation/notify.ts`): an in-app list at
+  `/notifications` with a sidebar unread badge, mark-read / mark-all-read.
+  Sources: assignment (task assignee, lead/deal owner, bulk lead assign),
+  `@mention` in an activity/note (matched to a member's first / full name or
+  email local-part), plus every automation notify action. Honours each user's
+  muted types from **`/settings/notifications`**.
+
+### Automation notes
+
+- The engine caps candidates per rule per run (200) — a real deployment would
+  page, but the dedupe key means missed rows are picked up next run.
+- Email delivery for notifications is not wired; `emailEnabled` is stored for
+  when it is.
+
 ## Local setup
 
 ### 1. PostgreSQL
@@ -235,11 +269,14 @@ src/app/(app)/              authenticated shell
   pipeline/                     Kanban board
   tasks/ activities/            task views + global activity feed
   quotations/ invoices/ payments/  read-only revenue-link lists
+  notifications/                in-app notification list
   search/                       global search
-  settings/                     profile, organization, team, tags, pipelines, integrations
+  settings/           profile, organization, team, tags, pipelines, integrations, automation, notifications
 src/lib/crm/                sales.ts (pipeline/activity helpers) + labels/query/csv/service/guard
 src/lib/integrations/       invoice client (live + mock), webhook HMAC, event sync
+src/lib/automation/         engine (rule evaluators + idempotent runner), notify, rules
 src/app/api/integrations/invoice/webhook   signed provider webhook endpoint
+src/app/api/automation/run                 secret-protected scheduler endpoint
 src/app/admin/              Super Admin (separate layout + guard)
 ```
 
@@ -247,9 +284,10 @@ src/app/admin/              Super Admin (separate layout + guard)
 
 - `package.json#prisma` (the `seed` hook) is deprecated in favour of
   `prisma.config.ts` in Prisma 7 — migrate before upgrading.
-- **Phase 5 (Rule-based follow-up automation — no AI)**: `ReminderRule`,
-  `ReminderExecution`, plus a background job runner. Idempotent, logged,
-  admin-toggleable.
+- **Phase 6 (Reports & Analytics)**: dashboards for lead volume/conversion,
+  lead-source performance, pipeline value by stage, win rate, average deal
+  size, sales cycle, salesperson performance, quotation-to-invoice conversion.
+  Metrics reconcile against source records; no duplicated financial logic.
 - Still open across phases: CSV **import** wizard, custom fields, per-user
   record visibility scoping, multi-currency roll-ups, email delivery for
   invites/notifications.
