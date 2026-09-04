@@ -1,6 +1,27 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
+/**
+ * Logomark — two chamfered blocks (left) plus a flagged hook (right),
+ * matching the brand's abstract two-tone mark. Uses currentColor so it
+ * follows text color (and therefore light/dark theme) automatically.
+ */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={cn("shrink-0", className)}
+      aria-hidden="true"
+    >
+      <path d="M24 24H40V40H24V24Z" />
+      <path d="M24 50L40 44V70H24V50Z" />
+      <path d="M46 24H74V62L68 70H60V36H46V24Z" />
+    </svg>
+  );
+}
+
 export function Logo({
   className,
   href = "/",
@@ -10,9 +31,7 @@ export function Logo({
 }) {
   const mark = (
     <span className={cn("flex items-center gap-2 font-semibold", className)}>
-      <span className="grid size-7 place-items-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-        D
-      </span>
+      <LogoMark className="size-7 text-foreground" />
       <span className="tracking-tight">
         Dotnapps <span className="text-muted-foreground">CRM</span>
       </span>
