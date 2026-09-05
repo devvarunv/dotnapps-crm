@@ -94,4 +94,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "billing.admin.set_status": "Subscription status set (platform)",
   "billing.admin.change_plan": "Subscription plan changed (platform)",
   "billing.admin.run_lifecycle": "Lifecycle run (platform)",
+  "billing.admin.extend_trial": "Trial/grace extended (platform)",
+  "admin.super_admin.grant": "Granted Super Admin",
+  "admin.super_admin.revoke": "Revoked Super Admin",
 };

@@ -144,3 +144,97 @@ export async function runLifecycleAction(): Promise<ActionState> {
     message: `Checked ${summary.checked}: ${summary.toGrace} moved to grace, ${summary.suspended} suspended.`,
   };
 }
+
+/** Grant or revoke platform-level Super Admin access. Guarded against
+ * locking the platform out: an admin can't demote themselves, and the last
+ * remaining super admin can't be demoted by anyone. */
+export async function toggleSuperAdminAction(formData: FormData): Promise<ActionState> {
+  const actor = await requireSuperAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  const makeAdmin = formData.get("makeAdmin") === "true";
+  if (!userId) return { error: "Missing user." };
+
+  if (!makeAdmin) {
+    if (userId === actor.id) {
+      return { error: "You can't revoke your own Super Admin access." };
+    }
+    const adminCount = await prisma.user.count({ where: { isSuperAdmin: true } });
+    if (adminCount <= 1) {
+      return { error: "At least one Super Admin must remain." };
+    }
+  }
+
+  const target = await prisma.user.update({
+    where: { id: userId },
+    data: { isSuperAdmin: makeAdmin },
+    select: { email: true },
+  });
+  await recordAudit({
+    action: makeAdmin ? "admin.super_admin.grant" : "admin.super_admin.revoke",
+    actorId: actor.id,
+    targetType: "User",
+    targetId: userId,
+    metadata: { email: target.email },
+  });
+  revalidatePath("/admin/users");
+  revalidatePath("/admin/security");
+  return { ok: true, message: makeAdmin ? "Granted Super Admin." : "Revoked Super Admin." };
+}
+
+/** Extend a struggling org's trial/grace period by N days — the core
+ * "support tooling" action for a business that calls in asking for more time. */
+export async function extendTrialAction(formData: FormData): Promise<ActionState> {
+  const actor = await requireSuperAdmin();
+  const id = String(formData.get("id") ?? "");
+  const days = Number(formData.get("days") ?? 7);
+  if (!id || !Number.isFinite(days) || days <= 0 || days > 90) {
+    return { error: "Invalid request." };
+  }
+
+  const sub = await prisma.subscription.findUnique({ where: { id } });
+  if (!sub) return { error: "Subscription not found." };
+
+  const extend = (d: Date | null) =>
+    new Date(Math.max(d?.getTime() ?? Date.now(), Date.now()) + days * 86_400_000);
+
+  await prisma.subscription.update({
+    where: { id },
+    data: {
+      currentPeriodEnd: extend(sub.currentPeriodEnd),
+      ...(sub.trialEndsAt ? { trialEndsAt: extend(sub.trialEndsAt) } : {}),
+      ...(sub.graceEndsAt ? { graceEndsAt: extend(sub.graceEndsAt) } : {}),
+      ...(sub.status === "PAST_DUE" || sub.status === "GRACE" ? { status: "ACTIVE" as const } : {}),
+    },
+  });
+  await recordAudit({
+    action: "billing.admin.extend_trial",
+    orgId: sub.orgId,
+    actorId: actor.id,
+    metadata: { days },
+  });
+  revalidatePath("/admin/businesses");
+  revalidatePath(`/admin/businesses/${sub.orgId}`);
+  revalidatePath("/admin/subscriptions");
+  return { ok: true, message: `Extended by ${days} day${days === 1 ? "" : "s"}.` };
+}
+
+/** Revoke a pending invite from the admin side (support case: wrong email,
+ * abandoned invite, etc). */
+export async function revokeInviteAdminAction(formData: FormData): Promise<ActionState> {
+  const actor = await requireSuperAdmin();
+  const id = String(formData.get("id") ?? "");
+  const invite = await prisma.invite.findUnique({ where: { id } });
+  if (!invite || invite.status !== "PENDING") return { error: "Invite not found." };
+
+  await prisma.invite.update({ where: { id }, data: { status: "REVOKED" } });
+  await recordAudit({
+    action: "member.invite.revoke",
+    orgId: invite.orgId,
+    actorId: actor.id,
+    targetType: "Invite",
+    targetId: id,
+    metadata: { email: invite.email, viaAdmin: true },
+  });
+  revalidatePath(`/admin/businesses/${invite.orgId}`);
+  return { ok: true, message: "Invite revoked." };
+}

@@ -47,7 +47,16 @@ export class SuspendedError extends Error {
 
 export type SubWithPlan = Subscription & { plan: SubscriptionPlan };
 
-/** Every org has exactly one Subscription; create a trialing one lazily. */
+/**
+ * Every org has exactly one Subscription; create a trialing one lazily.
+ *
+ * Callers (e.g. checking several plan-limit metrics for the same org at
+ * once via Promise.all) can race here — two concurrent calls both see "no
+ * subscription yet" and both attempt to create one. The unique constraint on
+ * `orgId` prevents a duplicate row; we just need to recover from it instead
+ * of letting it surface as a 500. Recover by re-reading rather than
+ * swallowing broadly, so a real DB error still propagates.
+ */
 export async function getSubscription(orgId: string): Promise<SubWithPlan | null> {
   const existing = await prisma.subscription.findUnique({
     where: { orgId },
@@ -62,17 +71,24 @@ export async function getSubscription(orgId: string): Promise<SubWithPlan | null
 
   const now = new Date();
   const trialEndsAt = new Date(now.getTime() + plan.trialDays * 86_400_000);
-  return prisma.subscription.create({
-    data: {
-      orgId,
-      planId: plan.id,
-      status: plan.trialDays > 0 ? "TRIALING" : "ACTIVE",
-      currentPeriodStart: now,
-      currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
-      trialEndsAt: plan.trialDays > 0 ? trialEndsAt : null,
-    },
-    include: { plan: true },
-  });
+  try {
+    return await prisma.subscription.create({
+      data: {
+        orgId,
+        planId: plan.id,
+        status: plan.trialDays > 0 ? "TRIALING" : "ACTIVE",
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+        trialEndsAt: plan.trialDays > 0 ? trialEndsAt : null,
+      },
+      include: { plan: true },
+    });
+  } catch (err) {
+    const lostRace =
+      typeof err === "object" && err !== null && "code" in err && err.code === "P2002";
+    if (!lostRace) throw err;
+    return prisma.subscription.findUnique({ where: { orgId }, include: { plan: true } });
+  }
 }
 
 export function planLimits(plan: SubscriptionPlan): Partial<Record<PlanMetric, number>> {
