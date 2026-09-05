@@ -5,6 +5,7 @@ import { Copy, Check } from "lucide-react";
 
 import { IDLE } from "@/lib/form";
 import { Input, Select } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field, Alert } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/button";
 import { SubmitButton, FormError, FormSuccess } from "@/components/form";
@@ -73,13 +74,13 @@ export function IntegrationForm({
 
         <Field label="API key" htmlFor="apiKey" error={err.apiKey}
           hint={summary.hasApiKey ? "A key is stored. Leave blank to keep it." : "Required for live mode."}>
-          <Input id="apiKey" name="apiKey" type="password" autoComplete="off"
+          <PasswordInput id="apiKey" name="apiKey" autoComplete="off"
             placeholder={summary.hasApiKey ? "•••••••• (stored)" : ""} />
         </Field>
 
         <Field label="Webhook signing secret" htmlFor="webhookSecret" error={err.webhookSecret}
           hint={summary.hasWebhookSecret ? "A secret is stored. Leave blank to keep it." : "Auto-generated if left blank."}>
-          <Input id="webhookSecret" name="webhookSecret" type="password" autoComplete="off"
+          <PasswordInput id="webhookSecret" name="webhookSecret" autoComplete="off"
             placeholder={summary.hasWebhookSecret ? "•••••••• (stored)" : ""} />
         </Field>
 

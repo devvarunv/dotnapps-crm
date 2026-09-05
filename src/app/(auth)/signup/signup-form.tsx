@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { signupAction } from "../actions";
 import { IDLE } from "@/lib/form";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field } from "@/components/ui/primitives";
 import { SubmitButton, FormError } from "@/components/form";
 
@@ -30,7 +31,7 @@ export function SignupForm({ next }: { next?: string }) {
         hint="At least 10 characters."
         error={state.fieldErrors?.password}
       >
-        <Input id="password" name="password" type="password"
+        <PasswordInput id="password" name="password"
           autoComplete="new-password" required
           aria-invalid={!!state.fieldErrors?.password} />
       </Field>
@@ -40,7 +41,7 @@ export function SignupForm({ next }: { next?: string }) {
         htmlFor="confirmPassword"
         error={state.fieldErrors?.confirmPassword}
       >
-        <Input id="confirmPassword" name="confirmPassword" type="password"
+        <PasswordInput id="confirmPassword" name="confirmPassword"
           autoComplete="new-password" required
           aria-invalid={!!state.fieldErrors?.confirmPassword} />
       </Field>

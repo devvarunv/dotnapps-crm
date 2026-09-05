@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { updateProfileAction, changePasswordAction } from "../actions";
 import { IDLE } from "@/lib/form";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field } from "@/components/ui/primitives";
 import { SubmitButton, FormError, FormSuccess } from "@/components/form";
 
@@ -45,10 +46,9 @@ export function PasswordForm() {
         htmlFor="currentPassword"
         error={state.fieldErrors?.currentPassword}
       >
-        <Input
+        <PasswordInput
           id="currentPassword"
           name="currentPassword"
-          type="password"
           autoComplete="current-password"
           required
           aria-invalid={!!state.fieldErrors?.currentPassword}
@@ -60,10 +60,9 @@ export function PasswordForm() {
         hint="At least 10 characters."
         error={state.fieldErrors?.newPassword}
       >
-        <Input
+        <PasswordInput
           id="newPassword"
           name="newPassword"
-          type="password"
           autoComplete="new-password"
           required
           aria-invalid={!!state.fieldErrors?.newPassword}
@@ -74,10 +73,9 @@ export function PasswordForm() {
         htmlFor="confirmPassword"
         error={state.fieldErrors?.confirmPassword}
       >
-        <Input
+        <PasswordInput
           id="confirmPassword"
           name="confirmPassword"
-          type="password"
           autoComplete="new-password"
           required
           aria-invalid={!!state.fieldErrors?.confirmPassword}

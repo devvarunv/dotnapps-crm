@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { loginAction } from "../actions";
 import { IDLE } from "@/lib/form";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Field } from "@/components/ui/primitives";
 import { SubmitButton, FormError } from "@/components/form";
 
@@ -26,10 +27,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
       </Field>
 
       <Field label="Password" htmlFor="password" error={state.fieldErrors?.password}>
-        <Input
+        <PasswordInput
           id="password"
           name="password"
-          type="password"
           autoComplete="current-password"
           required
           aria-invalid={!!state.fieldErrors?.password}
